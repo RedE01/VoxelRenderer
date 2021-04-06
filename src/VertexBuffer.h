@@ -1,4 +1,5 @@
 #pragma once
+#include "Buffer.h"
 #include <vector>
 
 enum class VertexAttributeType {
@@ -13,20 +14,10 @@ struct VertexAttribute {
     bool normalized;
 };
 
-enum class VertexBufferDataUsage {
-    STREAM_DRAW, STREAM_READ, STREAM_COPY, STATIC_DRAW, STATIC_READ, STATIC_COPY, DYNAMIC_DRAW, DYNAMIC_READ, DYNAMIC_COPY
-};
-
-class VertexBuffer {
+class VertexBuffer : public Buffer {
 public:
     VertexBuffer(const std::vector<VertexAttribute>& attributes);
-    ~VertexBuffer();
-
-    void setData(void* data, unsigned int dataSize, VertexBufferDataUsage usageType);
-
-    void bind();
-    void unbind();
 
 private:
-    unsigned int m_vbo;
+    virtual int getBufferType() override;
 };
