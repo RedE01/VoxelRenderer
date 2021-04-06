@@ -6,6 +6,7 @@
 
 #include "VertexBuffer.h"
 #include "VertexArray.h"
+#include "ShaderStorageBuffer.h"
 #include "Shader.h"
 
 const unsigned int WORLD_WIDTH = 256;
@@ -143,23 +144,17 @@ int main(void) {
 
     std::vector<VertexAttribute> vboAttributes { VertexAttribute(3, VertexAttributeType::FLOAT, false) };
     VertexBuffer vbo(vboAttributes);
-    vbo.setData(verticies, sizeof(verticies), VertexBufferDataUsage::STATIC_DRAW);
+    vbo.setData(verticies, sizeof(verticies), BufferDataUsage::STATIC_DRAW);
 
     vao.unbind();
 
     Shader shader("shader.glsl");
 
-    unsigned int octreeNodesSSBO;
-    glGenBuffers(1, &octreeNodesSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, octreeNodesSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, octree.nodes.size() * sizeof(OctreeNode), octree.nodes.data(), GL_DYNAMIC_COPY);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, octreeNodesSSBO);
+    ShaderStorageBuffer octreeNodesSSB(0);
+    octreeNodesSSB.setData(octree.nodes.data(), octree.nodes.size() * sizeof(OctreeNode), BufferDataUsage::DYNAMIC_COPY);
 
-    unsigned int chunkDataSSBO;
-    glGenBuffers(1, &chunkDataSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunkDataSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, octree.chunkData.size() * sizeof(uint8_t), octree.chunkData.data(), GL_DYNAMIC_COPY);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, chunkDataSSBO);
+    ShaderStorageBuffer chunkDataSSB(1);
+    chunkDataSSB.setData(octree.chunkData.data(), octree.chunkData.size() * sizeof(uint8_t), BufferDataUsage::DYNAMIC_COPY);
 
     glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
     double cameraAngle = 0.0;
