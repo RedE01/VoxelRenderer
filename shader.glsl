@@ -35,6 +35,7 @@ uniform float u_cameraDir;
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
 uniform uint u_chunkWidth;
+uniform vec3 u_palette[256];
 
 out vec4 FragColor;
 in vec2 fragPos;
@@ -113,7 +114,6 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
    double dist = 0.0;
 
    dvec3 invRayDir = 1.0 / rayDir;
-   uint d = 0;
    double hWorldWidth = u_worldWidth / 2.0;
 
    int iteration;
@@ -127,18 +127,17 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
       dvec3 localPos = pos;
       getOctreeNode(currentOctreeNodeID, currentDepth, localPos);
 
-      d = max(currentDepth, d);
-      if(currentDepth == u_maxOctreeDepth) {
-         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
+      if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
+         if(currentDepth == u_maxOctreeDepth) {
             dvec3 localChunkPos = localPos + dvec3(u_chunkWidth, u_chunkWidth, u_chunkWidth) / 2;
             uint voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
             if(voxelData != 0) {
-               break;
+               return u_palette[voxelData];
             }
          }
-         else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) {
-            return vec3(1.0, 1.0, 0.0);
-         }
+      }
+      else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) {
+         return u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
       }
 
       double width = u_worldWidth / pow(2, currentDepth);

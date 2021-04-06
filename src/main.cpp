@@ -11,6 +11,7 @@
 
 const unsigned int WORLD_WIDTH = 256;
 uint8_t world[WORLD_WIDTH][WORLD_WIDTH][WORLD_WIDTH];
+glm::vec3 palette[256];
 
 struct OctreeNode {
     OctreeNode(unsigned int parentIndex) : parentIndex(parentIndex), childrenIndices{0, 0, 0, 0, 0, 0, 0, 0}, dataIndex(0), isSolidColor(1) {}
@@ -122,11 +123,15 @@ int main(void) {
 
                 int h = 50;
                 if((x - h)*(x - h) + (y - h)*(y - h) + (z - h)*(z - h) <= 20*20) {
-                    world[z][y][x] = 1;
+                    world[z][y][x] = 1 + std::rand() % 3;
                 }
             }
         }
     }
+
+    palette[1] = glm::vec3(0.8, 0.0, 0.0);
+    palette[2] = glm::vec3(0.0, 0.8, 0.0);
+    palette[3] = glm::vec3(0.0, 0.0, 0.8);
 
     Octree octree((uint8_t*)world, WORLD_WIDTH, 5);
     std::cout << octree.chunkData.size() << ", " << octree.nodes.size() << " : " << octree.chunkData.size() + octree.nodes.size() * sizeof(OctreeNode) << std::endl;
@@ -164,6 +169,7 @@ int main(void) {
     shader.setUniform1ui("u_worldWidth", octree.worldWidth);
     shader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     shader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+    shader.setUniform3fv("u_palette", 256, (float*)palette);
 
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
