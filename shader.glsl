@@ -36,6 +36,8 @@ uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
 uniform uint u_chunkWidth;
 uniform vec3 u_palette[256];
+uniform ivec2 u_windowSize;
+uniform float u_fov;
 
 out vec4 FragColor;
 in vec2 fragPos;
@@ -156,9 +158,19 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
 void main() {
    dvec3 pos = dvec3(u_cameraPos);
 
-   float angleY = (fragPos.x - 0.5) * 3.1415926535 * 0.5 + u_cameraDir;
-   float angleX = (fragPos.y - 0.5) * 3.1415926535 * 0.5;
-   dvec3 rayDir = dvec3(sin(angleY), angleX, cos(angleY));
+   float aspectRatio = u_windowSize.x / float(u_windowSize.y);
+   vec2 screenSpaceCoordinates = fragPos - vec2(0.5, 0.5);
+
+   dvec3 rayDirCamera;
+   rayDirCamera.x = screenSpaceCoordinates.x * tan(u_fov) * aspectRatio;
+   rayDirCamera.y = screenSpaceCoordinates.y * tan(u_fov);
+   rayDirCamera.z = -1.0;
+   rayDirCamera = normalize(rayDirCamera);
+
+   dvec3 rayDir;
+   rayDir.x = rayDirCamera.x * cos(u_cameraDir) - rayDirCamera.z * sin(u_cameraDir);
+   rayDir.y = rayDirCamera.y;
+   rayDir.z = rayDirCamera.x * sin(u_cameraDir) + rayDirCamera.z * cos(u_cameraDir);
    rayDir = normalize(rayDir);
 
    FragColor = vec4(getPixelColor(pos, rayDir, 100), 1.0);

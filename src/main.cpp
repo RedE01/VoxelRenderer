@@ -101,7 +101,8 @@ int main(void) {
         return -1;
     }
 
-    window = glfwCreateWindow(640, 480, "Voxel Renderer", NULL, NULL);
+    glm::ivec2 windowSize(640, 480);
+    window = glfwCreateWindow(windowSize.x, windowSize.y, "Voxel Renderer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return -1;
@@ -170,6 +171,8 @@ int main(void) {
     shader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     shader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
     shader.setUniform3fv("u_palette", 256, (float*)palette);
+    shader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
+    shader.setUniform1f("u_fov", 1.0);
 
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
@@ -179,8 +182,8 @@ int main(void) {
 
         cameraAngle = xMousePos / 400.0;
         float movementSpeed = 0.5;
-        glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, cos(cameraAngle));
-        glm::vec3 strafeVector = glm::cross(glm::vec3(0.0, 1.0, 0.0), forwardVector);
+        glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, -cos(cameraAngle));
+        glm::vec3 strafeVector = glm::cross(forwardVector, glm::vec3(0.0, 1.0, 0.0));
         if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) position += movementSpeed * forwardVector;
         if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) position -= movementSpeed * strafeVector;
         if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) position -= movementSpeed * forwardVector;
