@@ -24,8 +24,8 @@ struct OctreeNode {
 
 struct VoxelData {
     uint paletteIndex;
-    ivec3 pos;
     dvec3 hitPos;
+    double rayLength;
 };
 
 layout(std430, binding = 0) buffer OctreeSSBO {
@@ -51,7 +51,7 @@ in vec2 fragPos;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
 vec3 getNormal(VoxelData voxelData) {
-    dvec3 localHitPos = voxelData.hitPos - voxelData.pos;
+    dvec3 localHitPos = voxelData.hitPos;
 
     double thLow = deltaRayOffset;
     double thHigh = 1.0 - thLow;
@@ -97,6 +97,7 @@ void getOctreeNode(inout uint currentOctreeNodeID, inout uint depth, inout dvec3
 VoxelData getVoxelData(uint chunkDataIndex, dvec3 localPos, dvec3 rayDir, dvec3 invRayDir) {
     VoxelData voxelData;
     voxelData.paletteIndex = 0;
+    voxelData.rayLength = 0;
 
     ivec3 iLocalPos;
     for(int iteration = 0; iteration < 100; ++iteration) {
@@ -108,20 +109,21 @@ VoxelData getVoxelData(uint chunkDataIndex, dvec3 localPos, dvec3 rayDir, dvec3 
         uint voxelByte = getVoxelByte(chunkDataIndex, iLocalPos);
         if(voxelByte != 0) {
             voxelData.paletteIndex = voxelByte;
-            voxelData.pos = iLocalPos;
-            voxelData.hitPos = localPos;
+            voxelData.hitPos = localPos - iLocalPos;
             break;
         }
 
-        double deltaRay = getDeltaRay(localPos, iLocalPos, 1.0, rayDir, invRayDir);
-        localPos += rayDir * (deltaRay + deltaRayOffset);
+        double deltaRay = getDeltaRay(localPos, iLocalPos, 1.0, rayDir, invRayDir) + deltaRayOffset;
+        localPos += rayDir * deltaRay;
+        voxelData.rayLength += deltaRay;
     }
 
     return voxelData;
 }
 
 vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
-    double dist = 0.0;
+    dvec3 cameraPos = pos;
+    double rayLength = 0.0;
 
     dvec3 invRayDir = 1.0 / rayDir;
     double hWorldWidth = u_worldWidth / 2.0;
@@ -142,6 +144,7 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
                 dvec3 localChunkPos = localPos + dvec3(u_chunkWidth, u_chunkWidth, u_chunkWidth) * 0.5;
                 VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
                 if(voxelData.paletteIndex != 0) {
+                    rayLength += voxelData.rayLength;
                     return abs(getNormal(voxelData));
                     // return u_palette[voxelData.paletteIndex];
                 }
@@ -153,10 +156,10 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
 
         double width = u_worldWidth / pow(2, currentDepth);
         ivec3 ipos = ivec3(floor(pos / width) * width);
-        double deltaRay = getDeltaRay(pos, ipos, width, rayDir, invRayDir);
-        pos += rayDir * (deltaRay + deltaRayOffset);
+        double deltaRay = getDeltaRay(pos, ipos, width, rayDir, invRayDir) + deltaRayOffset;
+        pos += rayDir * deltaRay;
 
-        dist += deltaRay;
+        rayLength += deltaRay;
 
     }
 
