@@ -5,8 +5,8 @@ layout (location = 0) in vec3 aPos;
 out vec2 fragPos;
 
 void main() {
-fragPos = vec2((aPos.x + 1.0) / 2.0, (aPos.y + 1.0) / 2.0);
-gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+    fragPos = vec2((aPos.x + 1.0) / 2.0, (aPos.y + 1.0) / 2.0);
+    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
 }
 
 
@@ -22,12 +22,18 @@ struct OctreeNode {
     uint dataIndex;
 };
 
+struct VoxelData {
+    uint paletteIndex;
+    ivec3 pos;
+    dvec3 hitPos;
+};
+
 layout(std430, binding = 0) buffer OctreeSSBO {
-OctreeNode octreeNodes[];
+    OctreeNode octreeNodes[];
 };
 
 layout(std430, binding = 1) buffer ChunkDataSSBO {
-uint chunkData[];
+    uint chunkData[];
 };
 
 uniform vec3 u_cameraPos;
@@ -43,6 +49,18 @@ out vec4 FragColor;
 in vec2 fragPos;
 
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
+
+vec3 getNormal(VoxelData voxelData) {
+    dvec3 localHitPos = voxelData.hitPos - voxelData.pos;
+
+    double thLow = deltaRayOffset;
+    double thHigh = 1.0 - thLow;
+    double nx = ((localHitPos.x < thLow) ? -1.0 : 0.0) + ((localHitPos.x > thHigh) ? 1.0 : 0.0);
+    double ny = ((localHitPos.y < thLow) ? -1.0 : 0.0) + ((localHitPos.y > thHigh) ? 1.0 : 0.0);
+    double nz = ((localHitPos.z < thLow) ? -1.0 : 0.0) + ((localHitPos.z > thHigh) ? 1.0 : 0.0);
+
+    return vec3(nx, ny, nz);
+}
 
 uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
     uint localVoxelID = iLocalPos.x + iLocalPos.y * u_chunkWidth + iLocalPos.z * chunkWidthSquared;
@@ -76,22 +94,30 @@ void getOctreeNode(inout uint currentOctreeNodeID, inout uint depth, inout dvec3
     }
 }
 
-uint getVoxelData(uint chunkDataIndex, dvec3 localPos, dvec3 rayDir, dvec3 invRayDir) {
-    int iteration;
-    for(iteration = 0; iteration < 100; ++iteration) {
-        ivec3 iLocalPos = ivec3(floor(localPos.x), floor(localPos.y), floor(localPos.z));
+VoxelData getVoxelData(uint chunkDataIndex, dvec3 localPos, dvec3 rayDir, dvec3 invRayDir) {
+    VoxelData voxelData;
+    voxelData.paletteIndex = 0;
+
+    ivec3 iLocalPos;
+    for(int iteration = 0; iteration < 100; ++iteration) {
+        iLocalPos = ivec3(floor(localPos.x), floor(localPos.y), floor(localPos.z));
         if(iLocalPos.x < 0 || iLocalPos.x >= u_chunkWidth || iLocalPos.y < 0.0 || iLocalPos.y >= u_chunkWidth || iLocalPos.z < 0.0 || iLocalPos.z >= u_chunkWidth) {
             break;
         }
 
         uint voxelByte = getVoxelByte(chunkDataIndex, iLocalPos);
-        if(voxelByte != 0) return voxelByte;
+        if(voxelByte != 0) {
+            voxelData.paletteIndex = voxelByte;
+            voxelData.pos = iLocalPos;
+            voxelData.hitPos = localPos;
+            break;
+        }
 
         double deltaRay = getDeltaRay(localPos, iLocalPos, 1.0, rayDir, invRayDir);
         localPos += rayDir * (deltaRay + deltaRayOffset);
     }
 
-    return 0;
+    return voxelData;
 }
 
 vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
@@ -114,9 +140,10 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
             if(currentDepth == u_maxOctreeDepth) {
                 dvec3 localChunkPos = localPos + dvec3(u_chunkWidth, u_chunkWidth, u_chunkWidth) * 0.5;
-                uint voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
-                if(voxelData != 0) {
-                    return u_palette[voxelData];
+                VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
+                if(voxelData.paletteIndex != 0) {
+                    return abs(getNormal(voxelData));
+                    // return u_palette[voxelData.paletteIndex];
                 }
             }
         }
