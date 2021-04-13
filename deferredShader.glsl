@@ -21,7 +21,7 @@ uniform sampler2D gNormal;
 in vec2 fragPos;
 
 void main() {
-    vec3 albedo = texture(albedo, fragPos).rgb;
+    vec3 albedo = texture(gAlbedo, fragPos).rgb;
 
     FragColor = vec4(albedo, 1.0);
 }
