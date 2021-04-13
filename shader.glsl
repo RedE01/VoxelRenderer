@@ -13,7 +13,8 @@ void main() {
 #section fragment
 #version 430 core
 
-const double deltaRayOffset = 0.000000001;
+layout (location = 0) out vec3 gAlbedo;
+layout (location = 1) out vec3 gNormal;
 
 struct OctreeNode {
     uint parentIndex;
@@ -26,6 +27,11 @@ struct VoxelData {
     uint paletteIndex;
     dvec3 hitPos;
     double rayLength;
+};
+
+struct gBufferData {
+    vec3 albedo;
+    vec3 normal;
 };
 
 layout(std430, binding = 0) buffer OctreeSSBO {
@@ -45,14 +51,12 @@ uniform vec3 u_palette[256];
 uniform ivec2 u_windowSize;
 uniform float u_fov;
 
-out vec4 FragColor;
 in vec2 fragPos;
 
+const double deltaRayOffset = 0.000000001;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
-vec3 getNormal(VoxelData voxelData) {
-    dvec3 localHitPos = voxelData.hitPos;
-
+vec3 getNormal(dvec3 localHitPos) {
     double thLow = deltaRayOffset;
     double thHigh = 1.0 - thLow;
     double nx = ((localHitPos.x < thLow) ? -1.0 : 0.0) + ((localHitPos.x > thHigh) ? 1.0 : 0.0);
@@ -121,7 +125,9 @@ VoxelData getVoxelData(uint chunkDataIndex, dvec3 localPos, dvec3 rayDir, dvec3 
     return voxelData;
 }
 
-vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
+gBufferData getGBufferData(dvec3 pos, dvec3 rayDir, uint maxIterations) {
+    gBufferData result;
+    
     dvec3 cameraPos = pos;
     double rayLength = 0.0;
 
@@ -140,18 +146,25 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
         getOctreeNode(currentOctreeNodeID, currentDepth, localPos);
 
         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
-            if(currentDepth == u_maxOctreeDepth) {
-                dvec3 localChunkPos = localPos + dvec3(u_chunkWidth, u_chunkWidth, u_chunkWidth) * 0.5;
+            if(currentDepth == u_maxOctreeDepth) { // Search for voxel in current chunk
+                dvec3 localChunkPos = localPos + dvec3(u_chunkWidth) * 0.5;
                 VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
                 if(voxelData.paletteIndex != 0) {
                     rayLength += voxelData.rayLength;
-                    return abs(getNormal(voxelData));
-                    // return u_palette[voxelData.paletteIndex];
+
+                    result.albedo = u_palette[voxelData.paletteIndex];
+                    result.normal = getNormal(voxelData.hitPos);
+                    return result;
                 }
             }
         }
-        else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) {
-            return u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
+        else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) { // Every voxel in the current octree node is the same color
+            double octreeNodeWidth = u_worldWidth / pow(2, currentDepth);
+            dvec3 localChunkPos = localPos + dvec3(octreeNodeWidth) * 0.5;
+
+            result.albedo = u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
+            result.normal = getNormal(localChunkPos / octreeNodeWidth);
+            return result;
         }
 
         double width = u_worldWidth / pow(2, currentDepth);
@@ -163,8 +176,9 @@ vec3 getPixelColor(dvec3 pos, dvec3 rayDir, uint maxIterations) {
 
     }
 
-    double a = double(iteration) / 50.0;
-    return vec3(a,a,a);
+    result.albedo = vec3(0.0, 0.0, 0.0);
+    result.normal = vec3(0.0, 0.0, 0.0);
+    return result;
 }
 
 void main() {
@@ -185,5 +199,7 @@ void main() {
     rayDir.z = rayDirCamera.x * sin(u_cameraDir) + rayDirCamera.z * cos(u_cameraDir);
     rayDir = normalize(rayDir);
 
-    FragColor = vec4(getPixelColor(pos, rayDir, 100), 1.0);
+    gBufferData gbd = getGBufferData(pos, rayDir, 100);
+    gAlbedo = gbd.albedo;
+    gNormal = gbd.normal;
 }

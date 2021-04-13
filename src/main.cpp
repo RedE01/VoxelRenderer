@@ -2,12 +2,16 @@
 #include <GLFW/glfw3.h>
 
 #include <cstring>
+#include <chrono>
 #include <iostream>
 
 #include "VertexBuffer.h"
+#include "ElementBuffer.h"
 #include "VertexArray.h"
 #include "ShaderStorageBuffer.h"
 #include "Shader.h"
+#include "Framebuffer.h"
+#include "Texture.h"
 
 const unsigned int WORLD_WIDTH = 256;
 uint8_t world[WORLD_WIDTH][WORLD_WIDTH][WORLD_WIDTH];
@@ -141,9 +145,11 @@ int main(void) {
         -1.0, -1.0,  0.0,
          1.0, -1.0,  0.0,
          1.0,  1.0,  0.0,
-         1.0,  1.0,  0.0,
         -1.0,  1.0,  0.0,
-        -1.0, -1.0,  0.0,
+    };
+
+    unsigned int indicies[6] {
+        0, 1, 2,  2, 3, 0
     };
 
     VertexArray vao;
@@ -152,9 +158,10 @@ int main(void) {
     VertexBuffer vbo(vboAttributes);
     vbo.setData(verticies, sizeof(verticies), BufferDataUsage::STATIC_DRAW);
 
-    vao.unbind();
+    ElementBuffer ebo;
+    ebo.setData(indicies, sizeof(indicies), BufferDataUsage::STATIC_DRAW);
 
-    Shader shader("shader.glsl");
+    vao.unbind();
 
     ShaderStorageBuffer octreeNodesSSB(0);
     octreeNodesSSB.setData(octree.nodes.data(), octree.nodes.size() * sizeof(OctreeNode), BufferDataUsage::DYNAMIC_COPY);
@@ -162,22 +169,74 @@ int main(void) {
     ShaderStorageBuffer chunkDataSSB(1);
     chunkDataSSB.setData(octree.chunkData.data(), octree.chunkData.size() * sizeof(uint8_t), BufferDataUsage::DYNAMIC_COPY);
 
+    Framebuffer gBuffer;
+    gBuffer.bind();
+
+    Texture albedoTexture(TextureType::TEXTURE_2D);
+    albedoTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    albedoTexture.setFilterMode(TextureFilterMode::NEAREST);
+
+    Texture normalTexture(TextureType::TEXTURE_2D);
+    normalTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    normalTexture.setFilterMode(TextureFilterMode::NEAREST);
+
+    gBuffer.attachTexture(&albedoTexture, 0);
+    gBuffer.attachTexture(&normalTexture, 1);
+    
+    unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, attachments);
+
+    gBuffer.unbind();
+
+    Shader gBufferShader("shader.glsl");
+    Shader deferredShader("deferredShader.glsl");
+
+    gBufferShader.useShader();
+    gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
+    gBufferShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
+    gBufferShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+    gBufferShader.setUniform3fv("u_palette", 256, (float*)palette);
+    gBufferShader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
+    gBufferShader.setUniform1f("u_fov", 1.0);
+
+    deferredShader.useShader();
+    glActiveTexture(GL_TEXTURE0);
+    albedoTexture.bind();
+
+    glActiveTexture(GL_TEXTURE1);
+    normalTexture.bind();
+
+    deferredShader.setUniform1i("gAlbedo", 0);
+    deferredShader.setUniform1i("gNormal", 1);
+
     glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
     double cameraAngle = 0.0;
     double xMousePos, yMousePos;
     glfwGetCursorPos(window, &xMousePos, &yMousePos);
 
-    shader.setUniform1ui("u_worldWidth", octree.worldWidth);
-    shader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
-    shader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
-    shader.setUniform3fv("u_palette", 256, (float*)palette);
-    shader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
-    shader.setUniform1f("u_fov", 1.0);
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> currentTime = std::chrono::high_resolution_clock::now();
+    std::chrono::time_point<std::chrono::high_resolution_clock> previousTime = currentTime;
+    double timeAccumulator = 0.0;
+    int frameCounter = 0;
 
     while (!glfwWindowShouldClose(window)) {
+        auto d = currentTime - previousTime;
+        previousTime = currentTime;
+        currentTime = std::chrono::high_resolution_clock::now();
+        frameCounter++;
+        timeAccumulator += d.count();
+        if(timeAccumulator > 1000000000) {
+            timeAccumulator -= 1000000000;
+            std::cout << "Fps: " << frameCounter << std::endl;
+            frameCounter = 0;
+        }
+
+        gBuffer.bind();
+        
         glClear(GL_COLOR_BUFFER_BIT);
 
-        shader.useShader();
+        gBufferShader.useShader();
         vao.bind();
 
         cameraAngle = xMousePos / 400.0;
@@ -194,8 +253,8 @@ int main(void) {
         double lastMouseXPos = xMousePos;
         glfwGetCursorPos(window, &xMousePos, &yMousePos);
         double deltaMouseX = xMousePos - lastMouseXPos;
-        shader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
-        shader.setUniform1f("u_cameraDir", cameraAngle);
+        gBufferShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
+        gBufferShader.setUniform1f("u_cameraDir", cameraAngle);
 
         if(glfwGetKey(window, GLFW_KEY_ESCAPE)) {
             if(cursorHidden) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -203,7 +262,12 @@ int main(void) {
             cursorHidden = !cursorHidden;
         }
 
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        gBuffer.unbind();
+
+        deferredShader.useShader();
+        
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
 
