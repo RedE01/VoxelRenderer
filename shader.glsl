@@ -56,14 +56,15 @@ in vec2 fragPos;
 const float deltaRayOffset = 0.01;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
-vec3 getNormal(vec3 localHitPos) {
-    float thLow = deltaRayOffset;
-    float thHigh = 1.0 - thLow;
-    float nx = ((localHitPos.x < thLow) ? -1.0 : 0.0) + ((localHitPos.x > thHigh) ? 1.0 : 0.0);
-    float ny = ((localHitPos.y < thLow) ? -1.0 : 0.0) + ((localHitPos.y > thHigh) ? 1.0 : 0.0);
-    float nz = ((localHitPos.z < thLow) ? -1.0 : 0.0) + ((localHitPos.z > thHigh) ? 1.0 : 0.0);
+vec3 getNormal(vec3 localHitPos, vec3 rayDir) {
+    rayDir = -rayDir;
+    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) - localHitPos;
+    vec3 dRay = dPos * (1.0 / rayDir);
+    float deltaRay = min(dRay.x, min(dRay.y, dRay.z));
 
-    return vec3(nx, ny, nz);
+    if(deltaRay == dRay.x) return vec3(sign(rayDir.x), 0.0, 0.0);
+    if(deltaRay == dRay.y) return vec3(0.0, sign(rayDir.y), 0.0);
+    return vec3(0.0, 0.0, sign(rayDir.z));
 }
 
 uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
@@ -153,7 +154,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
                     rayLength += voxelData.rayLength;
 
                     result.albedo = u_palette[voxelData.paletteIndex];
-                    result.normal = getNormal(voxelData.hitPos);
+                    result.normal = getNormal(voxelData.hitPos, rayDir);
                     return result;
                 }
             }
@@ -163,7 +164,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
             vec3 localChunkPos = localPos + vec3(octreeNodeWidth) * 0.5;
 
             result.albedo = u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
-            result.normal = getNormal(localChunkPos / octreeNodeWidth);
+            result.normal = getNormal(localChunkPos / octreeNodeWidth, rayDir);
             return result;
         }
 
