@@ -105,7 +105,7 @@ int main(void) {
         return -1;
     }
 
-    glm::ivec2 windowSize(640, 480);
+    glm::ivec2 windowSize(1280, 720);
     window = glfwCreateWindow(windowSize.x, windowSize.y, "Voxel Renderer", NULL, NULL);
     if (!window) {
         glfwTerminate();
@@ -180,16 +180,21 @@ int main(void) {
     normalTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
     normalTexture.setFilterMode(TextureFilterMode::NEAREST);
 
+    Texture posTexture(TextureType::TEXTURE_2D);
+    posTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture.setFilterMode(TextureFilterMode::NEAREST);
+
     gBuffer.attachTexture(&albedoTexture, 0);
     gBuffer.attachTexture(&normalTexture, 1);
+    gBuffer.attachTexture(&posTexture, 2);
     
-    unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-    glDrawBuffers(2, attachments);
+    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    glDrawBuffers(3, attachments);
 
     gBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
-    Shader deferredShader("deferredShader.glsl");
+    Shader deferredShader("lightningShader.glsl");
 
     gBufferShader.useShader();
     gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
@@ -200,17 +205,25 @@ int main(void) {
     gBufferShader.setUniform1f("u_fov", 1.0);
 
     deferredShader.useShader();
+    deferredShader.setUniform1ui("u_worldWidth", octree.worldWidth);
+    deferredShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
+    deferredShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+
     glActiveTexture(GL_TEXTURE0);
     albedoTexture.bind();
 
     glActiveTexture(GL_TEXTURE1);
     normalTexture.bind();
 
+    glActiveTexture(GL_TEXTURE2);
+    posTexture.bind();
+
     deferredShader.setUniform1i("gAlbedo", 0);
     deferredShader.setUniform1i("gNormal", 1);
+    deferredShader.setUniform1i("gPos", 2);
 
-    glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
-    double cameraAngle = 0.0;
+    glm::vec3 position = glm::vec3(-107.341, 33.5, -126.044);
+    double cameraAngle = 8.8025;
     double xMousePos, yMousePos;
     glfwGetCursorPos(window, &xMousePos, &yMousePos);
 
@@ -220,6 +233,8 @@ int main(void) {
     double timeAccumulator = 0.0;
     int frameCounter = 0;
 
+    double deltaTime = 0.0;
+
     while (!glfwWindowShouldClose(window)) {
         auto d = currentTime - previousTime;
         previousTime = currentTime;
@@ -228,9 +243,10 @@ int main(void) {
         timeAccumulator += d.count();
         if(timeAccumulator > 1000000000) {
             timeAccumulator -= 1000000000;
-            std::cout << "Fps: " << frameCounter << std::endl;
+            std::cout << "Fps: " << frameCounter << ", Frame time: " << 1.0 / frameCounter << std::endl;
             frameCounter = 0;
         }
+        deltaTime = d.count() / 1000000000.0;
 
         gBuffer.bind();
         
@@ -266,7 +282,8 @@ int main(void) {
         gBuffer.unbind();
 
         deferredShader.useShader();
-        
+        deferredShader.setUniform1f("u_deltaTime", float(deltaTime));
+
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);

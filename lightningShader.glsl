@@ -13,27 +13,13 @@ void main() {
 #section fragment
 #version 430 core
 
-layout (location = 0) out vec3 gAlbedo;
-layout (location = 1) out vec3 gNormal;
-layout (location = 2) out vec3 gPos;
+out vec4 FragColor;
 
 struct OctreeNode {
     uint parentIndex;
     uint childrenIndices[8];
     int isSolidColor;
     uint dataIndex;
-};
-
-struct VoxelData {
-    uint paletteIndex;
-    vec3 hitPos;
-    float rayLength;
-};
-
-struct gBufferData {
-    vec3 albedo;
-    vec3 normal;
-    vec3 pos;
 };
 
 layout(std430, binding = 0) buffer OctreeSSBO {
@@ -44,30 +30,20 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
     uint chunkData[];
 };
 
-uniform vec3 u_cameraPos;
-uniform float u_cameraDir;
+uniform sampler2D gAlbedo;
+uniform sampler2D gNormal;
+uniform sampler2D gPos;
+
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
 uniform uint u_chunkWidth;
-uniform vec3 u_palette[256];
-uniform ivec2 u_windowSize;
-uniform float u_fov;
 
 in vec2 fragPos;
 
+uniform float u_deltaTime;
+
 const float deltaRayOffset = 0.01;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
-
-vec3 getNormal(vec3 localHitPos, vec3 rayDir) {
-    rayDir = -rayDir;
-    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) - localHitPos;
-    vec3 dRay = dPos * (1.0 / rayDir);
-    float deltaRay = min(dRay.x, min(dRay.y, dRay.z));
-
-    if(deltaRay == dRay.x) return vec3(sign(rayDir.x), 0.0, 0.0);
-    if(deltaRay == dRay.y) return vec3(0.0, sign(rayDir.y), 0.0);
-    return vec3(0.0, 0.0, sign(rayDir.z));
-}
 
 uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
     uint localVoxelID = iLocalPos.x + iLocalPos.y * u_chunkWidth + iLocalPos.z * chunkWidthSquared;
@@ -101,11 +77,8 @@ void getOctreeNode(inout uint currentOctreeNodeID, inout uint depth, inout vec3 
     }
 }
 
-VoxelData getVoxelData(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 invRayDir) {
-    VoxelData voxelData;
-    voxelData.paletteIndex = 0;
-    voxelData.rayLength = 0;
-
+float getRayLengthInChunk(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 invRayDir) {
+    float rayLength = 0.0;
     ivec3 iLocalPos;
     for(int iteration = 0; iteration < 100; ++iteration) {
         iLocalPos = ivec3(floor(localPos.x), floor(localPos.y), floor(localPos.z));
@@ -115,22 +88,18 @@ VoxelData getVoxelData(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 inv
 
         uint voxelByte = getVoxelByte(chunkDataIndex, iLocalPos);
         if(voxelByte != 0) {
-            voxelData.paletteIndex = voxelByte;
-            voxelData.hitPos = localPos - iLocalPos;
-            break;
+            return rayLength;
         }
 
         float deltaRay = getDeltaRay(localPos, iLocalPos, 1.0, rayDir, invRayDir) + deltaRayOffset;
         localPos += rayDir * deltaRay;
-        voxelData.rayLength += deltaRay;
+        rayLength += deltaRay;
     }
 
-    return voxelData;
+    return -1.0;
 }
 
-gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
-    gBufferData result;
-    
+float getRayLength(vec3 pos, vec3 rayDir, uint maxIterations) {
     vec3 cameraPos = pos;
     float rayLength = 0.0;
 
@@ -151,25 +120,16 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
             if(currentDepth == u_maxOctreeDepth) { // Search for voxel in current chunk
                 vec3 localChunkPos = localPos + vec3(u_chunkWidth) * 0.5;
-                VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
-                if(voxelData.paletteIndex != 0) {
-                    rayLength += voxelData.rayLength;
+                float chunkRayLength = getRayLengthInChunk(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
+                if(chunkRayLength >= 0.0) {
+                    rayLength += chunkRayLength;
 
-                    result.albedo = u_palette[voxelData.paletteIndex];
-                    result.normal = getNormal(voxelData.hitPos, rayDir);
-                    result.pos = cameraPos + rayLength * rayDir;
-                    return result;
+                    return rayLength;
                 }
             }
         }
         else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) { // Every voxel in the current octree node is the same color
-            float octreeNodeWidth = u_worldWidth / pow(2, currentDepth);
-            vec3 localChunkPos = localPos + vec3(octreeNodeWidth) * 0.5;
-
-            result.albedo = u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
-            result.normal = getNormal(localChunkPos / octreeNodeWidth, rayDir);
-            result.pos = cameraPos + rayLength * rayDir;
-            return result;
+            return rayLength;
         }
 
         float width = u_worldWidth / pow(2, currentDepth);
@@ -181,32 +141,38 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
 
     }
 
-    result.albedo = vec3(-1.0, -1.0, -1.0);
-    result.normal = vec3(0.0, 0.0, 0.0);
-    result.pos = vec3(0.0, 0.0, 0.0);
-    return result;
+    return rayLength;
+}
+
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+}
+
+vec3 getRayDir(vec3 normal, vec2 screenPos, float deltaTime) {
+    float rand1 = random(screenPos + vec2(deltaTime, 0.0)) * 2.0 - 1.0;
+    float rand2 = random(screenPos + vec2(0.0, deltaTime)) * 2.0 - 1.0;
+
+    vec3 rayDir;
+    if(normal.x != 0.0) rayDir = vec3(normal.x, rand1, rand2);
+    else if(normal.y != 0.0) rayDir = vec3(rand1, normal.y, rand2);
+    else rayDir = vec3(rand1, rand2, normal.z);
+    
+    rayDir = normalize(rayDir);
+
+    return rayDir;
 }
 
 void main() {
-    vec3 pos = vec3(u_cameraPos);
+    vec3 albedo = texture(gAlbedo, fragPos).rgb;
+    vec3 normal = texture(gNormal, fragPos).xyz;
+    vec3 pos = texture(gPos, fragPos).xyz;
 
-    float aspectRatio = u_windowSize.x / float(u_windowSize.y);
-    vec2 screenSpaceCoordinates = fragPos - vec2(0.5, 0.5);
+    uint iterations = (albedo == vec3(-1, -1, -1)) ? 0 : 8;
+    vec3 rayDir = getRayDir(normal, fragPos, u_deltaTime);
+    float rayLength = getRayLength(pos + rayDir * 0.1, rayDir, iterations);
+    float oclusion = min(pow(rayLength, 1.0), 1.0);
 
-    vec3 rayDirCamera;
-    rayDirCamera.x = screenSpaceCoordinates.x * tan(u_fov) * aspectRatio;
-    rayDirCamera.y = screenSpaceCoordinates.y * tan(u_fov);
-    rayDirCamera.z = -1.0;
-    rayDirCamera = normalize(rayDirCamera);
+    FragColor = vec4(vec3(oclusion) * albedo, 1.0);
 
-    vec3 rayDir;
-    rayDir.x = rayDirCamera.x * cos(u_cameraDir) - rayDirCamera.z * sin(u_cameraDir);
-    rayDir.y = rayDirCamera.y;
-    rayDir.z = rayDirCamera.x * sin(u_cameraDir) + rayDirCamera.z * cos(u_cameraDir);
-    rayDir = normalize(rayDir);
-
-    gBufferData gbd = getGBufferData(pos, rayDir, 100);
-    gAlbedo = gbd.albedo;
-    gNormal = gbd.normal;
-    gPos = gbd.pos;
 }
