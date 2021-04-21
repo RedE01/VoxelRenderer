@@ -55,7 +55,6 @@ uniform float u_fov;
 
 in vec2 fragPos;
 
-const float deltaRayOffset = 0.01;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
 vec3 getNormal(vec3 localHitPos, vec3 rayDir) {
@@ -79,8 +78,8 @@ uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
     return (voxelDataWord >> ((voxelID % 4) << 3)) & uint(0x000000FF);
 }
 
-float getDeltaRay(vec3 pos, ivec3 ipos, float cubeWidth, vec3 rayDir, vec3 invRayDir) {
-    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) * cubeWidth + ipos - pos;
+float getDeltaRay(vec3 localCubePos, float cubeWidth, vec3 rayDir, vec3 invRayDir) {
+    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) * cubeWidth - localCubePos;
 
     vec3 dRay = dPos * invRayDir;
 
@@ -106,24 +105,28 @@ VoxelData getVoxelData(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 inv
     voxelData.paletteIndex = 0;
     voxelData.rayLength = 0;
 
-    ivec3 iLocalPos;
-    for(int iteration = 0; iteration < 100; ++iteration) {
-        iLocalPos = ivec3(floor(localPos.x), floor(localPos.y), floor(localPos.z));
-        if(iLocalPos.x < 0 || iLocalPos.x >= u_chunkWidth || iLocalPos.y < 0.0 || iLocalPos.y >= u_chunkWidth || iLocalPos.z < 0.0 || iLocalPos.z >= u_chunkWidth) {
+    vec3 startPos = localPos;
+    float rayLength = 0.0;
+
+    for(int iteration = 0; iteration < 32; ++iteration) {
+        if(localPos.x < 0 || localPos.x >= u_chunkWidth || localPos.y < 0.0 || localPos.y >= u_chunkWidth || localPos.z < 0.0 || localPos.z >= u_chunkWidth) {
             break;
         }
 
-        uint voxelByte = getVoxelByte(chunkDataIndex, iLocalPos);
+        uint voxelByte = getVoxelByte(chunkDataIndex, ivec3(floor(localPos)));
         if(voxelByte != 0) {
             voxelData.paletteIndex = voxelByte;
-            voxelData.hitPos = localPos - iLocalPos;
+            voxelData.hitPos = fract(localPos);
             break;
         }
 
-        float deltaRay = getDeltaRay(localPos, iLocalPos, 1.0, rayDir, invRayDir) + deltaRayOffset;
-        localPos += rayDir * deltaRay;
-        voxelData.rayLength += deltaRay;
+        float deltaRay = getDeltaRay(fract(localPos), 1.0, rayDir, invRayDir) + 0.00001;
+        rayLength += deltaRay;
+
+        localPos = startPos + rayDir * rayLength;
     }
+
+    voxelData.rayLength = rayLength;
 
     return voxelData;
 }
@@ -150,7 +153,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
 
         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
             if(currentDepth == u_maxOctreeDepth) { // Search for voxel in current chunk
-                vec3 localChunkPos = localPos + vec3(u_chunkWidth) * 0.5;
+                vec3 localChunkPos = localPos + vec3(u_chunkWidth * 0.5);
                 VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
                 if(voxelData.paletteIndex != 0) {
                     rayLength += voxelData.rayLength;
@@ -172,12 +175,10 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
             return result;
         }
 
-        float width = u_worldWidth / pow(2, currentDepth);
-        ivec3 ipos = ivec3(floor(pos / width) * width);
-        float deltaRay = getDeltaRay(pos, ipos, width, rayDir, invRayDir) + deltaRayOffset;
-        pos += rayDir * deltaRay;
-
+        int width = int(u_worldWidth) / int(pow(2, currentDepth));
+        float deltaRay = getDeltaRay(mod(pos, width), width, rayDir, invRayDir) + 0.0005;
         rayLength += deltaRay;
+        pos = cameraPos + rayDir * rayLength;
 
     }
 
