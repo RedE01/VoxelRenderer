@@ -13,7 +13,7 @@ void main() {
 #section fragment
 #version 430 core
 
-out vec4 FragColor;
+layout (location = 0) out vec4 frameTexture;
 
 struct OctreeNode {
     uint parentIndex;
@@ -30,9 +30,9 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
     uint chunkData[];
 };
 
-uniform sampler2D gAlbedo;
-uniform sampler2D gNormal;
-uniform sampler2D gPos;
+uniform sampler2D u_gAlbedo;
+uniform sampler2D u_gNormal;
+uniform sampler2D u_gPos;
 
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
@@ -158,9 +158,9 @@ vec3 getRayDir(vec3 normal, vec2 screenPos, float deltaTime) {
 }
 
 void main() {
-    vec3 albedo = texture(gAlbedo, fragPos).rgb;
-    vec3 normal = texture(gNormal, fragPos).xyz;
-    vec3 pos = texture(gPos, fragPos).xyz;
+    vec3 albedo = texture(u_gAlbedo, fragPos).rgb;
+    vec3 normal = texture(u_gNormal, fragPos).xyz;
+    vec3 pos = texture(u_gPos, fragPos).xyz;
 
     float maxDistance = (albedo.x < 0.0) ? 0 : 32.0;
     vec3 rayDir = getRayDir(normal, fragPos, u_deltaTime);
@@ -168,5 +168,5 @@ void main() {
     float oclusion = rayLength / maxDistance;
     oclusion = min(pow(oclusion, 0.8), 1.0);
 
-    FragColor = vec4(vec3(oclusion) * albedo, 1.0);
+    frameTexture = vec4(vec3(oclusion) * albedo, 1.0);
 }

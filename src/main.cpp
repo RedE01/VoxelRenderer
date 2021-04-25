@@ -200,13 +200,19 @@ int main(void) {
     gBuffer.attachTexture(&normalTexture, 1);
     gBuffer.attachTexture(&posTexture, 2);
 
-    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
-    glDrawBuffers(3, attachments);
-
     gBuffer.unbind();
+
+    Framebuffer lightingFrameBuffer;
+    lightingFrameBuffer.bind();
+    Texture frameTexture(TextureType::TEXTURE_2D);
+    frameTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    frameTexture.setFilterMode(TextureFilterMode::NEAREST);
+    lightingFrameBuffer.attachTexture(&frameTexture, 0);
+    lightingFrameBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
     Shader lightingShader("lightingShader.glsl");
+    Shader postProcessShader("postProcessShader.glsl");
 
     gBufferShader.useShader();
     gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
@@ -221,19 +227,12 @@ int main(void) {
     lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     lightingShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
 
-    glActiveTexture(GL_TEXTURE0);
-    albedoTexture.bind();
+    lightingShader.setUniform1i("u_gAlbedo", 0);
+    lightingShader.setUniform1i("u_gNormal", 1);
+    lightingShader.setUniform1i("u_gPos", 2);
 
-    glActiveTexture(GL_TEXTURE1);
-    normalTexture.bind();
-
-    glActiveTexture(GL_TEXTURE2);
-    posTexture.bind();
-
-    lightingShader.setUniform1i("gAlbedo", 0);
-    lightingShader.setUniform1i("gNormal", 1);
-    lightingShader.setUniform1i("gPos", 2);
-
+    postProcessShader.useShader();
+    postProcessShader.setUniform1i("u_frameTexture", 0);
 
     glm::vec3 position = glm::vec3(-107.341, 33.5, -126.044);
     double cameraAngle = 8.8025;
@@ -292,12 +291,31 @@ int main(void) {
             cursorHidden = !cursorHidden;
         }
 
+        unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+        glDrawBuffers(3, attachments);
+
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        gBuffer.unbind();
         
+        lightingFrameBuffer.bind();
         lightingShader.useShader();
         lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
 
+        unsigned int attachments2[1] = { GL_COLOR_ATTACHMENT0 };
+        glDrawBuffers(1, attachments2);
+        glActiveTexture(GL_TEXTURE0);
+        albedoTexture.bind();
+        glActiveTexture(GL_TEXTURE1);
+        normalTexture.bind();
+        glActiveTexture(GL_TEXTURE2);
+        posTexture.bind();
+        
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+        lightingFrameBuffer.unbind();
+        postProcessShader.useShader();
+        glActiveTexture(GL_TEXTURE0);
+        frameTexture.bind();
+        
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
