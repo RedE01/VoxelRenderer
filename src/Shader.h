@@ -1,7 +1,10 @@
 #pragma once
 #include <unordered_map>
 #include <string>
+#include <memory>
 #include <glm/glm.hpp>
+
+class Texture;
 
 class Shader {
 public:
@@ -9,6 +12,7 @@ public:
     ~Shader();
 
     void useShader();
+    void bindTextures();
 
     void setUniform1f(const char* name, const float& v);
     void setUniform2f(const char* name, const float& v1, const float& v2);
@@ -38,6 +42,8 @@ public:
     void setUniformMat3(const char* name, const glm::mat3& matrix);
     void setUniformMat4(const char* name, const glm::mat4& matrix);
 
+    void setTexture(std::weak_ptr<Texture> texture, unsigned int target, const char* samplerUniformName);
+
     unsigned int getShaderProgramID() const { return m_shaderProgramID; }
 
 private:
@@ -47,4 +53,5 @@ private:
     unsigned int m_shaderProgramID;
 
     std::unordered_map<const char*, int> m_uniformLocations;
+    std::unordered_map<unsigned int, std::weak_ptr<Texture>> m_textures;
 };

@@ -184,30 +184,30 @@ int main(void) {
     Framebuffer gBuffer;
     gBuffer.bind();
 
-    Texture albedoTexture(TextureType::TEXTURE_2D);
-    albedoTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
-    albedoTexture.setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> albedoTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    albedoTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    albedoTexture->setFilterMode(TextureFilterMode::NEAREST);
 
-    Texture normalTexture(TextureType::TEXTURE_2D);
-    normalTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
-    normalTexture.setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> normalTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    normalTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    normalTexture->setFilterMode(TextureFilterMode::NEAREST);
 
-    Texture posTexture(TextureType::TEXTURE_2D);
-    posTexture.textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
-    posTexture.setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> posTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    posTexture->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture->setFilterMode(TextureFilterMode::NEAREST);
 
-    gBuffer.attachTexture(&albedoTexture, 0);
-    gBuffer.attachTexture(&normalTexture, 1);
-    gBuffer.attachTexture(&posTexture, 2);
+    gBuffer.attachTexture(albedoTexture.get(), 0);
+    gBuffer.attachTexture(normalTexture.get(), 1);
+    gBuffer.attachTexture(posTexture.get(), 2);
 
     gBuffer.unbind();
 
     Framebuffer lightingFrameBuffer;
     lightingFrameBuffer.bind();
-    Texture frameTexture(TextureType::TEXTURE_2D);
-    frameTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
-    frameTexture.setFilterMode(TextureFilterMode::NEAREST);
-    lightingFrameBuffer.attachTexture(&frameTexture, 0);
+    std::shared_ptr<Texture> frameTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    frameTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    frameTexture->setFilterMode(TextureFilterMode::NEAREST);
+    lightingFrameBuffer.attachTexture(frameTexture.get(), 0);
     lightingFrameBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
@@ -227,12 +227,12 @@ int main(void) {
     lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     lightingShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
 
-    lightingShader.setUniform1i("u_gAlbedo", 0);
-    lightingShader.setUniform1i("u_gNormal", 1);
-    lightingShader.setUniform1i("u_gPos", 2);
+    lightingShader.setTexture(albedoTexture, 0, "u_gAlbedo");
+    lightingShader.setTexture(normalTexture, 1, "u_gNormal");
+    lightingShader.setTexture(posTexture, 2, "u_gPos");
 
     postProcessShader.useShader();
-    postProcessShader.setUniform1i("u_frameTexture", 0);
+    postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
 
     glm::vec3 position = glm::vec3(-107.341, 33.5, -126.044);
     double cameraAngle = 8.8025;
@@ -293,28 +293,20 @@ int main(void) {
 
         unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
         glDrawBuffers(3, attachments);
-
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
         lightingFrameBuffer.bind();
         lightingShader.useShader();
         lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
-
+        lightingShader.bindTextures();
+        
         unsigned int attachments2[1] = { GL_COLOR_ATTACHMENT0 };
         glDrawBuffers(1, attachments2);
-        glActiveTexture(GL_TEXTURE0);
-        albedoTexture.bind();
-        glActiveTexture(GL_TEXTURE1);
-        normalTexture.bind();
-        glActiveTexture(GL_TEXTURE2);
-        posTexture.bind();
-        
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         lightingFrameBuffer.unbind();
         postProcessShader.useShader();
-        glActiveTexture(GL_TEXTURE0);
-        frameTexture.bind();
+        postProcessShader.bindTextures();
         
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 

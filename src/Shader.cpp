@@ -1,8 +1,10 @@
 #include "Shader.h"
+#include "Texture.h"
 #include <fstream>
 #include <sstream>
 #include <cstring>
 #include <iostream>
+#include <algorithm>
 
 #include <GL/glew.h>
 
@@ -38,6 +40,20 @@ Shader::~Shader() {
 
 void Shader::useShader() {
     glUseProgram(m_shaderProgramID);
+}
+
+void Shader::bindTextures() {
+    for(auto it = m_textures.begin(); it != m_textures.end();) {
+        Texture* texture = it->second.lock().get();
+        if(texture) {
+            glActiveTexture(GL_TEXTURE0 + it->first);
+            texture->bind();
+            ++it;
+        }
+        else {
+            it = m_textures.erase(it);
+        }
+    }
 }
 
 void Shader::setUniform1f(const char* name, const float& v) {
@@ -146,6 +162,11 @@ void Shader::setUniformMat3(const char* name, const glm::mat3& matrix) {
 
 void Shader::setUniformMat4(const char* name, const glm::mat4& matrix) {
     glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, &(matrix[0][0]));
+}
+
+void Shader::setTexture(std::weak_ptr<Texture> texture, unsigned int target, const char* samplerUniformName) {
+    m_textures[target] = texture;
+    setUniform1i(samplerUniformName, target);
 }
 
 int Shader::getUniformLocation(const char* name) {
