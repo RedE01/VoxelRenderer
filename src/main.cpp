@@ -13,6 +13,10 @@
 #include "Framebuffer.h"
 #include "Texture.h"
 
+#ifdef VOXEL_RENDERER_DEBUG
+    #include "Debug.h"
+#endif
+
 const unsigned int WORLD_WIDTH = 256;
 uint8_t world[WORLD_WIDTH][WORLD_WIDTH][WORLD_WIDTH];
 glm::vec3 palette[256];
@@ -105,6 +109,10 @@ int main(void) {
         return -1;
     }
 
+    #ifdef VOXEL_RENDERER_DEBUG
+    enableDebugging();
+    #endif
+
     glm::ivec2 windowSize(1280, 720);
     window = glfwCreateWindow(windowSize.x, windowSize.y, "Voxel Renderer", NULL, NULL);
     if (!window) {
@@ -120,6 +128,10 @@ int main(void) {
     if(glewInit() != GLEW_OK) {
         return -1;
     }
+
+    #ifdef VOXEL_RENDERER_DEBUG
+    initializeDebugger();
+    #endif
 
     for(int x = 0; x < WORLD_WIDTH; x++) {
         for(int y = 0; y < WORLD_WIDTH; y++) {
@@ -282,10 +294,10 @@ int main(void) {
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         gBuffer.unbind();
-
+        
         lightingShader.useShader();
         lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
-        
+
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
