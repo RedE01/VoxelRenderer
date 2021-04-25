@@ -187,14 +187,14 @@ int main(void) {
     gBuffer.attachTexture(&albedoTexture, 0);
     gBuffer.attachTexture(&normalTexture, 1);
     gBuffer.attachTexture(&posTexture, 2);
-    
+
     unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
     glDrawBuffers(3, attachments);
 
     gBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
-    Shader deferredShader("lightningShader.glsl");
+    Shader lightingShader("lightingShader.glsl");
 
     gBufferShader.useShader();
     gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
@@ -204,10 +204,10 @@ int main(void) {
     gBufferShader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
     gBufferShader.setUniform1f("u_fov", 1.0);
 
-    deferredShader.useShader();
-    deferredShader.setUniform1ui("u_worldWidth", octree.worldWidth);
-    deferredShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
-    deferredShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+    lightingShader.useShader();
+    lightingShader.setUniform1ui("u_worldWidth", octree.worldWidth);
+    lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
+    lightingShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
 
     glActiveTexture(GL_TEXTURE0);
     albedoTexture.bind();
@@ -218,9 +218,10 @@ int main(void) {
     glActiveTexture(GL_TEXTURE2);
     posTexture.bind();
 
-    deferredShader.setUniform1i("gAlbedo", 0);
-    deferredShader.setUniform1i("gNormal", 1);
-    deferredShader.setUniform1i("gPos", 2);
+    lightingShader.setUniform1i("gAlbedo", 0);
+    lightingShader.setUniform1i("gNormal", 1);
+    lightingShader.setUniform1i("gPos", 2);
+
 
     glm::vec3 position = glm::vec3(-107.341, 33.5, -126.044);
     double cameraAngle = 8.8025;
@@ -282,9 +283,9 @@ int main(void) {
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         gBuffer.unbind();
 
-        deferredShader.useShader();
-        deferredShader.setUniform1f("u_deltaTime", float(deltaTime));
-
+        lightingShader.useShader();
+        lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
+        
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
