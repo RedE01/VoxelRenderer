@@ -55,11 +55,14 @@ uniform float u_fov;
 
 in vec2 fragPos;
 
+float deltaRayOffset1 = 0.00001;
+float deltaRayOffset2 = 0.0005;
+
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
 vec3 getNormal(vec3 localHitPos, vec3 rayDir) {
     rayDir = -rayDir;
-    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) - localHitPos;
+    vec3 dPos = vec3(((rayDir.x >= 0) ? 1 : 0), ((rayDir.y >= 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) - localHitPos;
     vec3 dRay = dPos * (1.0 / rayDir);
     float deltaRay = min(dRay.x, min(dRay.y, dRay.z));
 
@@ -79,7 +82,7 @@ uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
 }
 
 float getDeltaRay(vec3 localCubePos, float cubeWidth, vec3 rayDir, vec3 invRayDir) {
-    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) * cubeWidth - localCubePos;
+    vec3 dPos = vec3(((rayDir.x >= 0) ? 1 : 0), ((rayDir.y >= 0) ? 1 : 0), ((rayDir.z >= 0) ? 1 : 0)) * cubeWidth - localCubePos;
 
     vec3 dRay = dPos * invRayDir;
 
@@ -120,7 +123,7 @@ VoxelData getVoxelData(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 inv
             break;
         }
 
-        float deltaRay = getDeltaRay(fract(localPos), 1.0, rayDir, invRayDir) + 0.00001;
+        float deltaRay = getDeltaRay(fract(localPos), 1.0, rayDir, invRayDir) + deltaRayOffset1;
         rayLength += deltaRay;
 
         localPos = startPos + rayDir * rayLength;
@@ -156,7 +159,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
                 vec3 localChunkPos = localPos + vec3(u_chunkWidth * 0.5);
                 VoxelData voxelData = getVoxelData(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
                 if(voxelData.paletteIndex != 0) {
-                    rayLength += voxelData.rayLength;
+                    rayLength += voxelData.rayLength - (deltaRayOffset1 + deltaRayOffset2);
 
                     result.albedo = u_palette[voxelData.paletteIndex];
                     result.normal = getNormal(voxelData.hitPos, rayDir);
@@ -176,7 +179,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
         }
 
         int width = int(u_worldWidth) / int(pow(2, currentDepth));
-        float deltaRay = getDeltaRay(mod(pos, width), width, rayDir, invRayDir) + 0.0005;
+        float deltaRay = getDeltaRay(mod(pos, width), width, rayDir, invRayDir) + deltaRayOffset2;
         rayLength += deltaRay;
         pos = cameraPos + rayDir * rayLength;
 

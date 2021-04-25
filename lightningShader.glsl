@@ -98,17 +98,16 @@ float getRayLengthInChunk(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 
     return -1.0;
 }
 
-float getRayLength(vec3 pos, vec3 rayDir, uint maxIterations) {
+float getRayLength(vec3 pos, vec3 rayDir, float maxDistance) {
     vec3 cameraPos = pos;
     float rayLength = 0.0;
 
     vec3 invRayDir = 1.0 / rayDir;
     float hWorldWidth = u_worldWidth / 2.0;
 
-    int iteration;
-    for(iteration = 0; iteration < maxIterations; ++iteration) {
+    while(rayLength < maxDistance) {
         if(pos.x <= -hWorldWidth || pos.x >= hWorldWidth || pos.y <= -hWorldWidth || pos.y >= hWorldWidth || pos.z <= -hWorldWidth || pos.z >= hWorldWidth) {
-            break;
+            return maxDistance;
         }
 
         uint currentOctreeNodeID = 0;
@@ -122,13 +121,12 @@ float getRayLength(vec3 pos, vec3 rayDir, uint maxIterations) {
                 float chunkRayLength = getRayLengthInChunk(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
                 if(chunkRayLength >= 0.0) {
                     rayLength += chunkRayLength;
-
-                    return rayLength;
+                    break;
                 }
             }
         }
         else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) { // Every voxel in the current octree node is the same color
-            return rayLength;
+            break;
         }
 
         float width = u_worldWidth / pow(2, currentDepth);
@@ -164,10 +162,11 @@ void main() {
     vec3 normal = texture(gNormal, fragPos).xyz;
     vec3 pos = texture(gPos, fragPos).xyz;
 
-    uint iterations = (albedo == vec3(-1, -1, -1)) ? 0 : 8;
+    float maxDistance = (albedo.x < 0.0) ? 0 : 32.0;
     vec3 rayDir = getRayDir(normal, fragPos, u_deltaTime);
-    float rayLength = getRayLength(pos + rayDir * 0.1, rayDir, iterations);
-    float oclusion = max(min(rayLength, 1.0), 0.4);
+    float rayLength = getRayLength(pos + rayDir * 0.01, rayDir, maxDistance);
+    float oclusion = rayLength / maxDistance;
+    oclusion = min(pow(oclusion, 0.8), 1.0);
 
     FragColor = vec4(vec3(oclusion) * albedo, 1.0);
 }

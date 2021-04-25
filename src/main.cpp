@@ -181,7 +181,7 @@ int main(void) {
     normalTexture.setFilterMode(TextureFilterMode::NEAREST);
 
     Texture posTexture(TextureType::TEXTURE_2D);
-    posTexture.textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture.textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
     posTexture.setFilterMode(TextureFilterMode::NEAREST);
 
     gBuffer.attachTexture(&albedoTexture, 0);
@@ -256,9 +256,10 @@ int main(void) {
         vao.bind();
 
         cameraAngle = xMousePos / 400.0;
-        float movementSpeed = 0.5;
+        float movementSpeed = 0.1;
         glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, -cos(cameraAngle));
         glm::vec3 strafeVector = glm::cross(forwardVector, glm::vec3(0.0, 1.0, 0.0));
+        if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) movementSpeed *= 5;
         if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) position += movementSpeed * forwardVector;
         if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) position -= movementSpeed * strafeVector;
         if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) position -= movementSpeed * forwardVector;
