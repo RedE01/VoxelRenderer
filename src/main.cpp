@@ -291,8 +291,7 @@ int main(void) {
             cursorHidden = !cursorHidden;
         }
 
-        unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
-        glDrawBuffers(3, attachments);
+        gBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
         lightingFrameBuffer.bind();
@@ -300,8 +299,7 @@ int main(void) {
         lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
         lightingShader.bindTextures();
         
-        unsigned int attachments2[1] = { GL_COLOR_ATTACHMENT0 };
-        glDrawBuffers(1, attachments2);
+        lightingFrameBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         lightingFrameBuffer.unbind();
