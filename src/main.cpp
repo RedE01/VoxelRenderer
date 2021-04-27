@@ -12,14 +12,15 @@
 #include "Shader.h"
 #include "Framebuffer.h"
 #include "Texture.h"
+#include "VoxelLoader.h"
 
 #ifdef VOXEL_RENDERER_DEBUG
     #include "Debug.h"
 #endif
 
-const unsigned int WORLD_WIDTH = 256;
-uint8_t world[WORLD_WIDTH][WORLD_WIDTH][WORLD_WIDTH];
-glm::vec3 palette[256];
+const unsigned int WORLD_WIDTH = 128;
+uint8_t* world;
+glm::vec3* palette;
 
 struct OctreeNode {
     OctreeNode(unsigned int parentIndex) : parentIndex(parentIndex), childrenIndices{0, 0, 0, 0, 0, 0, 0, 0}, dataIndex(0), isSolidColor(1) {}
@@ -61,7 +62,7 @@ private:
             }
         }
         else {
-            nodes[currentIndex].dataIndex = world[startz][starty][startx];
+            nodes[currentIndex].dataIndex = world[startx + starty * WORLD_WIDTH + startz * WORLD_WIDTH * WORLD_WIDTH];
         }
     }
 
@@ -69,11 +70,11 @@ private:
         int endx = startx + width;
         int endy = starty + width;
         int endz = startz + width;
-        uint8_t uniqueColor = world[startz][starty][startx];
+        uint8_t uniqueColor = world[startx + starty * WORLD_WIDTH + startz * WORLD_WIDTH * WORLD_WIDTH];
         for(int z = startz; z < endz; z++) {
             for(int y = starty; y < endy; y++) {
                 for(int x = startx; x < endx; x++) {
-                    if(world[z][y][x] != uniqueColor) return false;
+                    if(world[x + y * WORLD_WIDTH + z * WORLD_WIDTH * WORLD_WIDTH] != uniqueColor) return false;
                 }
             }
         }
@@ -88,7 +89,7 @@ private:
         for(int z = startz; z < endz; z++) {
             for(int y = starty; y < endy; y++) {
                 for(int x = startx; x < endx; x++) {
-                    chunkData.push_back(world[z][y][x]);
+                    chunkData.push_back(world[x + y * WORLD_WIDTH + z * WORLD_WIDTH * WORLD_WIDTH]);
                 }
             }
         }
@@ -133,24 +134,14 @@ int main(void) {
     initializeDebugger();
     #endif
 
-    for(int x = 0; x < WORLD_WIDTH; x++) {
-        for(int y = 0; y < WORLD_WIDTH; y++) {
-            for(int z = 0; z < WORLD_WIDTH; z++) {
-                world[z][y][x] = 0;
+    VoxelData vd = VoxelLoader::loadVoxelData("file.xraw", VoxelDataAxis::Z_Up);
+    world = vd.voxelData;
+    palette = (glm::vec3*)vd.paletteData;
 
-                int h = 50;
-                if((x - h)*(x - h) + (y - h)*(y - h) + (z - h)*(z - h) <= 20*20) {
-                    world[z][y][x] = 1 + std::rand() % 3;
-                }
-            }
-        }
-    }
-
-    palette[1] = glm::vec3(0.8, 0.0, 0.0);
-    palette[2] = glm::vec3(0.0, 0.8, 0.0);
-    palette[3] = glm::vec3(0.0, 0.0, 0.8);
 
     Octree octree((uint8_t*)world, WORLD_WIDTH, 5);
+
+    delete[] world;
     std::cout << octree.chunkData.size() << ", " << octree.nodes.size() << " : " << octree.chunkData.size() + octree.nodes.size() * sizeof(OctreeNode) << std::endl;
 
     float verticies[6 * 3] {
@@ -234,7 +225,7 @@ int main(void) {
     postProcessShader.useShader();
     postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
 
-    glm::vec3 position = glm::vec3(-107.341, 33.5, -126.044);
+    glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
     double cameraAngle = 8.8025;
     double xMousePos, yMousePos;
     glfwGetCursorPos(window, &xMousePos, &yMousePos);
