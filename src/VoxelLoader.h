@@ -7,7 +7,7 @@ enum class VoxelDataAxis {
 
 struct VoxelData {
     uint8_t* voxelData;
-    unsigned int voxelDataSize;
+    unsigned int sizeX, sizeY, sizeZ;
     float* paletteData;
 };
 

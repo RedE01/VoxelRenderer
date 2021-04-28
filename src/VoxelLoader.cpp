@@ -13,7 +13,7 @@ namespace VoxelLoader {
         std::ifstream file(filename, std::ios::binary | std::ios::in | std::ios::ate);
         if(!file.is_open()) {
             std::cout << "Could not open file " << filename << std::endl;
-            return {nullptr, 0, nullptr};
+            return {nullptr, 0, 0, 0, nullptr};
         }
 
         std::streampos fileSize = file.tellg();
@@ -32,14 +32,14 @@ namespace VoxelLoader {
     }
 
     VoxelData parseVoxelFile(uint8_t* fileBuffer, unsigned int fileSize, VoxelDataAxis axis) {
-        if(fileSize < 4) return {nullptr, 0, nullptr};
+        if(fileSize < 4) return {nullptr, 0, 0, 0, nullptr};
 
         if(fileBuffer[0] == 'X' && fileBuffer[1] == 'R' && fileBuffer[2] == 'A' && fileBuffer[3] == 'W'){
             return parseXRAWFile(fileBuffer, fileSize, axis);
         }
         else {
             std::cout << "unsuported file type" << std::endl;
-            return {nullptr, 0, nullptr};
+            return {nullptr, 0, 0, 0, nullptr};
         }
     }
 
@@ -56,22 +56,22 @@ namespace VoxelLoader {
             uint32_t numOfPaletteColors;
         };
 
-        if(fileSize < sizeof(Header)) return {nullptr, 0, nullptr};
+        if(fileSize < sizeof(Header)) return {nullptr, 0, 0, 0, nullptr};
 
         Header header;
         header = *((Header*)fileBuffer);
         
-        // std::cout << (int)header.colorChannelDataType << ", " << (int)header.numOfColorChannels << ", " << (int)header.bitsPerChannel << ", " << (int)header.bitsPerIndex << ", " << (int)header.x << ", " << (int)header.y << ", " << (int)header.z << ", " << (int)header.numOfPaletteColors << std::endl; 
+        std::cout << (int)header.colorChannelDataType << ", " << (int)header.numOfColorChannels << ", " << (int)header.bitsPerChannel << ", " << (int)header.bitsPerIndex << ", " << (int)header.x << ", " << (int)header.y << ", " << (int)header.z << ", " << (int)header.numOfPaletteColors << std::endl; 
         if(header.numOfPaletteColors != 256) {
             std::cout << "ERROR: Number of palette colors must be 256" << std::endl;
-            return {nullptr, 0, nullptr};
+            return {nullptr, 0, 0, 0, nullptr};
         }
 
         unsigned int voxelDataSize = header.x * header.y * header.z * (header.bitsPerIndex / 8);
         unsigned int paletteDataSize = header.numOfColorChannels * (header.bitsPerChannel / 8) * header.numOfPaletteColors;
         if(fileSize < sizeof(Header) + voxelDataSize + paletteDataSize) {
             std::cout << "ERROR: File too small" << std::endl;
-            return {nullptr, 0, nullptr};
+            return {nullptr, 0, 0, 0, nullptr};
         }
 
         uint8_t* voxelDataBuffer = new uint8_t[voxelDataSize];
@@ -126,7 +126,7 @@ namespace VoxelLoader {
         }
         
 
-        return {voxelDataBuffer, voxelDataSize, paletteData};
+        return {voxelDataBuffer, header.x, header.y, header.z, paletteData};
     }
 
 }

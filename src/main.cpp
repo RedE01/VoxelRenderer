@@ -13,95 +13,11 @@
 #include "Framebuffer.h"
 #include "Texture.h"
 #include "VoxelLoader.h"
+#include "Octree.h"
 
 #ifdef VOXEL_RENDERER_DEBUG
     #include "Debug.h"
 #endif
-
-const unsigned int WORLD_WIDTH = 128;
-uint8_t* world;
-glm::vec3* palette;
-
-struct OctreeNode {
-    OctreeNode(unsigned int parentIndex) : parentIndex(parentIndex), childrenIndices{0, 0, 0, 0, 0, 0, 0, 0}, dataIndex(0), isSolidColor(1) {}
-    const unsigned int parentIndex;
-    unsigned int childrenIndices[8];
-    int isSolidColor;
-    unsigned int dataIndex;
-};
-
-class Octree {
-public:
-    Octree(uint8_t* world, unsigned int worldWidth, unsigned int maxDepth)
-        : worldWidth(worldWidth), maxDepth(maxDepth) {
-
-        nodes.push_back(OctreeNode(0));
-        initOctree(0, 0, 0, 0, 0);
-    }
-
-private:
-    void initOctree(unsigned int currentIndex, int depth, int startx, int starty, int startz) {
-        int width = worldWidth / std::pow(2, depth);
-        int hWidth = width / 2;
-        
-        if(!isSolidColor(width, startx, starty, startz)) {
-            nodes[currentIndex].isSolidColor = 0;
-            if(depth >= maxDepth) {
-                initData(nodes[currentIndex], width, startx, starty, startz);
-            }
-            else {
-                for(int i = 0; i < 8; ++i) {
-                    nodes[currentIndex].childrenIndices[i] = nodes.size();
-                    nodes.push_back(OctreeNode(currentIndex));
-
-                    int cStartx = startx + ((i % 2 == 0) ? 0 : hWidth);
-                    int cStarty = starty + ((i % 4 <  2) ? 0 : hWidth);
-                    int cStartz = startz + ((i % 8 <  4) ? 0 : hWidth);
-                    initOctree(nodes[currentIndex].childrenIndices[i], depth + 1, cStartx, cStarty, cStartz);
-                }
-            }
-        }
-        else {
-            nodes[currentIndex].dataIndex = world[startx + starty * WORLD_WIDTH + startz * WORLD_WIDTH * WORLD_WIDTH];
-        }
-    }
-
-    bool isSolidColor(int width, int startx, int starty, int startz) {
-        int endx = startx + width;
-        int endy = starty + width;
-        int endz = startz + width;
-        uint8_t uniqueColor = world[startx + starty * WORLD_WIDTH + startz * WORLD_WIDTH * WORLD_WIDTH];
-        for(int z = startz; z < endz; z++) {
-            for(int y = starty; y < endy; y++) {
-                for(int x = startx; x < endx; x++) {
-                    if(world[x + y * WORLD_WIDTH + z * WORLD_WIDTH * WORLD_WIDTH] != uniqueColor) return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    void initData(OctreeNode& node, int width, int startx, int starty, int startz) {
-        int endx = startx + width;
-        int endy = starty + width;
-        int endz = startz + width;
-        node.dataIndex = chunkData.size();
-        for(int z = startz; z < endz; z++) {
-            for(int y = starty; y < endy; y++) {
-                for(int x = startx; x < endx; x++) {
-                    chunkData.push_back(world[x + y * WORLD_WIDTH + z * WORLD_WIDTH * WORLD_WIDTH]);
-                }
-            }
-        }
-    }
-
-public:
-    const unsigned int worldWidth;
-    const unsigned int maxDepth;
-    
-    std::vector<uint8_t> chunkData;
-    std::vector<OctreeNode> nodes;
-};
 
 int main(void) {
     GLFWwindow* window;
@@ -134,12 +50,17 @@ int main(void) {
     initializeDebugger();
     #endif
 
-    VoxelData vd = VoxelLoader::loadVoxelData("file.xraw", VoxelDataAxis::Z_Up);
-    world = vd.voxelData;
-    palette = (glm::vec3*)vd.paletteData;
+    VoxelData voxelData = VoxelLoader::loadVoxelData("file.xraw", VoxelDataAxis::Z_Up);
+    uint8_t* world = voxelData.voxelData;
+    glm::vec3* palette = (glm::vec3*)voxelData.paletteData;
+
+    if(voxelData.sizeX != voxelData.sizeY || voxelData.sizeX != voxelData.sizeZ) {
+        std::cout << "ERROR: world sides must have the same length" << std::endl;
+        return -1;
+    }
 
 
-    Octree octree((uint8_t*)world, WORLD_WIDTH, 5);
+    Octree octree(world, voxelData.sizeX, 5);
 
     delete[] world;
     std::cout << octree.chunkData.size() << ", " << octree.nodes.size() << " : " << octree.chunkData.size() + octree.nodes.size() * sizeof(OctreeNode) << std::endl;
@@ -208,7 +129,7 @@ int main(void) {
     gBufferShader.useShader();
     gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
     gBufferShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
-    gBufferShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+    gBufferShader.setUniform1ui("u_chunkWidth", octree.worldWidth / std::pow(2, octree.maxDepth));
     gBufferShader.setUniform3fv("u_palette", 256, (float*)palette);
     gBufferShader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
     gBufferShader.setUniform1f("u_fov", 1.0);
@@ -216,7 +137,7 @@ int main(void) {
     lightingShader.useShader();
     lightingShader.setUniform1ui("u_worldWidth", octree.worldWidth);
     lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
-    lightingShader.setUniform1ui("u_chunkWidth", WORLD_WIDTH / std::pow(2, octree.maxDepth));
+    lightingShader.setUniform1ui("u_chunkWidth", octree.worldWidth / std::pow(2, octree.maxDepth));
 
     lightingShader.setTexture(albedoTexture, 0, "u_gAlbedo");
     lightingShader.setTexture(normalTexture, 1, "u_gNormal");
