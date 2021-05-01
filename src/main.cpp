@@ -1,5 +1,8 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
 
 #include <cstring>
 #include <chrono>
@@ -46,14 +49,24 @@ int main(void) {
         return -1;
     }
 
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(NULL);
+
     #ifdef VOXEL_RENDERER_DEBUG
     initializeDebugger();
     #endif
 
-    VoxelData voxelData = VoxelLoader::loadVoxelData("file.xraw", VoxelDataAxis::Z_Up);
+    VoxelData voxelData = VoxelLoader::loadVoxelData("monu1.xraw", VoxelDataAxis::Z_Up);
     uint8_t* world = voxelData.voxelData;
     glm::vec3* palette = (glm::vec3*)voxelData.paletteData;
 
+    if(voxelData.voxelData == nullptr) {
+        return -1;
+    }
     if(voxelData.sizeX != voxelData.sizeY || voxelData.sizeX != voxelData.sizeZ) {
         std::cout << "ERROR: world sides must have the same length" << std::endl;
         return -1;
@@ -145,6 +158,8 @@ int main(void) {
 
     postProcessShader.useShader();
     postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
+    postProcessShader.setTexture(albedoTexture, 1, "u_gAlbedo");
+    postProcessShader.setTexture(normalTexture, 2, "u_gNormal");
 
     glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
     double cameraAngle = 8.8025;
@@ -159,7 +174,13 @@ int main(void) {
 
     double deltaTime = 0.0;
 
+    int outputImageSelection = 0;
+
     while (!glfwWindowShouldClose(window)) {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
         auto d = currentTime - previousTime;
         previousTime = currentTime;
         currentTime = std::chrono::high_resolution_clock::now();
@@ -175,11 +196,11 @@ int main(void) {
         gBuffer.bind();
         
         glClear(GL_COLOR_BUFFER_BIT);
-
+        
         gBufferShader.useShader();
         vao.bind();
 
-        cameraAngle = xMousePos / 400.0;
+        if(cursorHidden) cameraAngle = xMousePos / 400.0;
         float movementSpeed = 0.1;
         glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, -cos(cameraAngle));
         glm::vec3 strafeVector = glm::cross(forwardVector, glm::vec3(0.0, 1.0, 0.0));
@@ -191,9 +212,7 @@ int main(void) {
         if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) position.y += movementSpeed;
         if(glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) position.y -= movementSpeed;
 
-        double lastMouseXPos = xMousePos;
         glfwGetCursorPos(window, &xMousePos, &yMousePos);
-        double deltaMouseX = xMousePos - lastMouseXPos;
         gBufferShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
         gBufferShader.setUniform1f("u_cameraDir", cameraAngle);
 
@@ -217,13 +236,25 @@ int main(void) {
         lightingFrameBuffer.unbind();
         postProcessShader.useShader();
         postProcessShader.bindTextures();
+        postProcessShader.setUniform1i("u_frameTexture", outputImageSelection);
         
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+        ImGui::RadioButton("Show final image", &outputImageSelection, 0);
+        ImGui::RadioButton("Show albedo buffer", &outputImageSelection, 1);
+        ImGui::RadioButton("Show normal buffer", &outputImageSelection, 2);
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
 
         glfwPollEvents();
     }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext(NULL);
 
     glfwTerminate();
     return 0;
