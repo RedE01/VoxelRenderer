@@ -6,6 +6,7 @@ workspace "VoxelRenderer"
 
 include "vendor/GLEW"
 include "vendor/GLFW"
+include "vendor/IMGUI"
 
 project "VoxelRenderer"
 	kind "ConsoleApp"
@@ -25,11 +26,13 @@ project "VoxelRenderer"
 		"vendor/GLEW/glew/include",
 		"vendor/GLFW/glfw/include",
 		"vendor/GLM/glm/",
+		"vendor/IMGUI/imgui"
 	}
 
 	links {
 		"GLEW",
-		"GLFW"
+		"GLFW",
+		"IMGUI"
 	}
 
 	defines "GLEW_STATIC"

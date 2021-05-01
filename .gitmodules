@@ -8,5 +8,5 @@
 	path = vendor/GLM/glm
 	url = https://github.com/g-truc/glm
 [submodule "vendor/imgui"]
-	path = vendor/imgui
+	path = vendor/IMGUI/imgui
 	url = https://github.com/ocornut/imgui
