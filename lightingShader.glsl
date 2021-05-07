@@ -33,6 +33,7 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gNormal;
 uniform sampler2D u_gPos;
+uniform sampler2D u_frameTexture;
 
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
@@ -42,7 +43,6 @@ in vec2 fragPos;
 
 uniform float u_deltaTime;
 
-const float deltaRayOffset = 0.01;
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 
 uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
@@ -55,89 +55,114 @@ uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
     return (voxelDataWord >> ((voxelID % 4) << 3)) & uint(0x000000FF);
 }
 
-float getDeltaRay(vec3 localCubePos, float cubeWidth, vec3 rayDir, vec3 invRayDir) {
-    vec3 dPos = vec3(((rayDir.x > 0) ? 1 : 0), ((rayDir.y > 0) ? 1 : 0), ((rayDir.z > 0) ? 1 : 0)) * cubeWidth - localCubePos;
-
-    vec3 dRay = dPos * invRayDir;
-
-    return min(dRay.x, min(dRay.y, dRay.z));
-}
-
+// Calculates the octreeID of the octreeNode containing the given position.
+//  'currentOctreeNodeID' must be the id of a parent of the wanted node (should most of the time be 0). The wanted node id is returned in this variable.
+//  'depth' must the depth of the node provided (should also most of the time be 0). The wanted nodes depth in the octree is returned in this variable.
+//  'pos' must be local to the provided node (0,0) being the center of the parent node (if currentOctreeNodeID is zero this is in global coordinates).
+//      The provided position in local space of the calculated octreeNode is returned in this variable.
 void getOctreeNode(inout uint currentOctreeNodeID, inout uint depth, inout vec3 pos) {
     while(octreeNodes[currentOctreeNodeID].isSolidColor == 0 && depth < u_maxOctreeDepth) {
         int childIndex = ((pos.x >= 0) ? 1 : 0) + ((pos.y >= 0) ? 1 : 0) * 2 + ((pos.z >= 0) ? 1 : 0) * 4;
 
         float qWidth = u_worldWidth / pow(2, depth + 2);
-        pos.x += qWidth * ((pos.x >= 0) ? -1.0 : 1.0);
-        pos.y += qWidth * ((pos.y >= 0) ? -1.0 : 1.0);
-        pos.z += qWidth * ((pos.z >= 0) ? -1.0 : 1.0);
+        pos.x += qWidth * ((pos.x >= 0) ? -1 : 1);
+        pos.y += qWidth * ((pos.y >= 0) ? -1 : 1);
+        pos.z += qWidth * ((pos.z >= 0) ? -1 : 1);
 
         depth++;
         currentOctreeNodeID = octreeNodes[currentOctreeNodeID].childrenIndices[childIndex];
     }
 }
 
-float getRayLengthInChunk(uint chunkDataIndex, vec3 localPos, vec3 rayDir, vec3 invRayDir) {
+// Calculates the center of the next voxel by traversing a ray starting on 'startPos' with direction 'rayDir'. 
+vec3 getNextVoxel(vec3 cubeCenterPos, inout float rayLength, vec3 startPos, float cubeWidth, vec3 rayDir, vec3 invRayDir) {
+    // startPos + rayDir * dRay = cubeCenterPos +- width/2 <=> dRay = (cubeCenterPos +- width/2 - startPos) / rayDir
+    vec3 dPos = cubeCenterPos + vec3(((rayDir.x >= 0) ? cubeWidth : -cubeWidth), ((rayDir.y >= 0) ? cubeWidth : -cubeWidth), ((rayDir.z >= 0) ? cubeWidth : -cubeWidth)) * 0.5 - startPos;
+    vec3 dRay = dPos * invRayDir;
+
+    vec3 normal;
+    if(dRay.x < dRay.y && dRay.x < dRay.z) {
+        normal = vec3(-sign(rayDir.x), 0.0, 0.0);
+        rayLength = dRay.x;
+    }
+    else if(dRay.y < dRay.z) {
+        normal = vec3(0.0, -sign(rayDir.y), 0.0);
+        rayLength = dRay.y;
+    }
+    else {
+        normal = vec3(0.0, 0.0, -sign(rayDir.z));
+        rayLength = dRay.z;
+    }
+    cubeCenterPos = startPos + rayLength * rayDir - normal * 0.5;
+
+    return floor(cubeCenterPos) + vec3(0.5, 0.5, 0.5);
+}
+
+// Raymarches through a chunk and returns the length of the ray untill the first voxel is hit, or -1 if no voxels were hit.
+//  localVoxelPos should always be the position of the center of a voxel.
+float getRayLengthInChunk(uint chunkDataIndex, vec3 localVoxelPos, vec3 localStartPos, vec3 rayDir, vec3 invRayDir) {
     float rayLength = 0.0;
-    vec3 startPos = localPos;
     for(int iteration = 0; iteration < 16; ++iteration) {
-        if(localPos.x < 0 || localPos.x >= u_chunkWidth || localPos.y < 0.0 || localPos.y >= u_chunkWidth || localPos.z < 0.0 || localPos.z >= u_chunkWidth) {
+        if(localVoxelPos.x < 0 || localVoxelPos.x >= u_chunkWidth || localVoxelPos.y < 0.0 || localVoxelPos.y >= u_chunkWidth || localVoxelPos.z < 0.0 || localVoxelPos.z >= u_chunkWidth) {
             break;
         }
 
-        uint voxelByte = getVoxelByte(chunkDataIndex, ivec3(floor(localPos)));
+        uint voxelByte = getVoxelByte(chunkDataIndex, ivec3(floor(localVoxelPos)));
         if(voxelByte != 0) {
             return rayLength;
         }
 
-        float deltaRay = getDeltaRay(fract(localPos), 1.0, rayDir, invRayDir) + deltaRayOffset;
-        rayLength += deltaRay;
-        localPos = startPos + rayDir * rayLength;
+        localVoxelPos = getNextVoxel(localVoxelPos, rayLength, localStartPos, 1.0, rayDir, invRayDir);        
     }
 
-    return -1.0;
+    return -1;
 }
 
-float getRayLength(vec3 pos, vec3 rayDir, float maxDistance) {
-    vec3 cameraPos = pos;
-    float rayLength = 0.0;
+// Calculates the length of a ray untill it reaches a voxel by raymarching through an octree 
+float getRayLength(vec3 pos, vec3 rayDir, uint maxIterations, float maxDistance) {
+    vec3 startPos = pos;
+    vec3 voxelPos = floor(pos) + vec3(0.5, 0.5, 0.5); // voxelPos is always in the center of a voxel
+    vec3 normal = vec3(1.0, 0.0, 0.0);
+    float rayLength = 0;
 
     vec3 invRayDir = 1.0 / rayDir;
     float hWorldWidth = u_worldWidth / 2.0;
 
-    while(rayLength < maxDistance) {
-        if(pos.x <= -hWorldWidth || pos.x >= hWorldWidth || pos.y <= -hWorldWidth || pos.y >= hWorldWidth || pos.z <= -hWorldWidth || pos.z >= hWorldWidth) {
-            return maxDistance;
+    for(uint iterations = 0; iterations < maxIterations && rayLength < maxDistance; ++iterations) {
+        if(voxelPos.x <= -hWorldWidth || voxelPos.x >= hWorldWidth || voxelPos.y <= -hWorldWidth || voxelPos.y >= hWorldWidth || voxelPos.z <= -hWorldWidth || voxelPos.z >= hWorldWidth) {
+            break;
         }
 
         uint currentOctreeNodeID = 0;
         uint currentDepth = 0;
-        vec3 localPos = pos;
-        getOctreeNode(currentOctreeNodeID, currentDepth, localPos);
+        vec3 localOctreeNodeVoxelPos = voxelPos;
+        getOctreeNode(currentOctreeNodeID, currentDepth, localOctreeNodeVoxelPos);
 
         if(octreeNodes[currentOctreeNodeID].isSolidColor == 0) {
             if(currentDepth == u_maxOctreeDepth) { // Search for voxel in current chunk
-                vec3 localChunkPos = localPos + vec3(u_chunkWidth) * 0.5;
-                float chunkRayLength = getRayLengthInChunk(octreeNodes[currentOctreeNodeID].dataIndex, localChunkPos, rayDir, invRayDir);
-                if(chunkRayLength >= 0.0) {
-                    rayLength += chunkRayLength;
-                    break;
+                // localOctreeNodeVoxelPos is in the range [-width/2, width/2], we want to transform it into the range [0, width]
+                vec3 localVoxelPos = floor(localOctreeNodeVoxelPos + vec3(u_chunkWidth * 0.5)) + vec3(0.5);
+                rayLength = getRayLengthInChunk(octreeNodes[currentOctreeNodeID].dataIndex, localVoxelPos, startPos + (localVoxelPos - voxelPos), rayDir, invRayDir);
+                if(rayLength >= 0.0) {
+                    return rayLength;
                 }
             }
         }
         else if(octreeNodes[currentOctreeNodeID].dataIndex != 0) { // Every voxel in the current octree node is the same color
-            break;
+            float octreeNodeWidth = u_worldWidth / pow(2, currentDepth);
+            vec3 localChunkPos = vec3(localOctreeNodeVoxelPos) + vec3(octreeNodeWidth) * 0.5;
+
+            return rayLength;
         }
 
         float width = u_worldWidth / pow(2, currentDepth);
-        float deltaRay = getDeltaRay(mod(pos, width), width, rayDir, invRayDir) + deltaRayOffset;
-        rayLength += deltaRay;
-        pos = cameraPos + rayDir * rayLength;
+        vec3 octreeNodePos = floor(voxelPos / width) * width + vec3(width * 0.5);  // position of the center of the current octreeNode
+
+        voxelPos = getNextVoxel(octreeNodePos, rayLength, startPos, width, rayDir, invRayDir);
     }
 
-    return rayLength;
+    return maxDistance;
 }
-
 
 float random(vec2 st) {
     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -162,9 +187,10 @@ void main() {
     vec3 normal = texture(u_gNormal, fragPos).xyz;
     vec3 pos = texture(u_gPos, fragPos).xyz;
 
-    float maxDistance = (albedo.x < 0.0) ? 0 : 32.0;
+    uint maxIterations = (albedo.x < 0.0) ? 0 : 16;
+    float maxDistance = 32.0;
     vec3 rayDir = getRayDir(normal, fragPos, u_deltaTime);
-    float rayLength = getRayLength(pos + rayDir * 0.01, rayDir, maxDistance);
+    float rayLength = getRayLength(pos + rayDir * 0.01, rayDir, maxIterations, maxDistance);
     float oclusion = rayLength / maxDistance;
     oclusion = min(pow(oclusion, 0.8), 1.0);
 
