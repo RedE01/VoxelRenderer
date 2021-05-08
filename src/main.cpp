@@ -136,8 +136,11 @@ int main(void) {
     lightingFrameBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
+    if(!gBufferShader.compiledSuccessfully()) return -1;
     Shader lightingShader("lightingShader.glsl");
+    if(!lightingShader.compiledSuccessfully()) return -1;
     Shader postProcessShader("postProcessShader.glsl");
+    if(!postProcessShader.compiledSuccessfully()) return -1;
 
     gBufferShader.useShader();
     gBufferShader.setUniform1ui("u_worldWidth", octree.worldWidth);
@@ -243,6 +246,11 @@ int main(void) {
         ImGui::RadioButton("Show final image", &outputImageSelection, 0);
         ImGui::RadioButton("Show albedo buffer", &outputImageSelection, 1);
         ImGui::RadioButton("Show normal buffer", &outputImageSelection, 2);
+
+        if(ImGui::Button("Hide cursor")) {
+            cursorHidden = true;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

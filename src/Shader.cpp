@@ -9,9 +9,9 @@
 #include <GL/glew.h>
 
 std::unordered_map<std::string, std::string> getSourcesFromFile(const char* filepath);
-unsigned int createShader(const std::string& source, GLenum shaderType);
+int createShader(const std::string& source, GLenum shaderType);
 void deleteShader(unsigned int shaderID);
-unsigned int createShaderProgram(unsigned int vertexShaderID, unsigned int fragmentShaderID);
+int createShaderProgram(unsigned int vertexShaderID, unsigned int fragmentShaderID);
 
 Shader::Shader(const char* filepath) {
     std::unordered_map<std::string, std::string> sources = getSourcesFromFile(filepath);
@@ -20,8 +20,12 @@ Shader::Shader(const char* filepath) {
     auto fragmentShaderSource = sources.find("fragment");
 
     if(vertexShaderSource != sources.end() && fragmentShaderSource != sources.end()) {
-        unsigned int vertexShaderID = createShader(vertexShaderSource->second, GL_VERTEX_SHADER);
-        unsigned int fragmentShaderID = createShader(fragmentShaderSource->second, GL_FRAGMENT_SHADER);
+        int vertexShaderID = createShader(vertexShaderSource->second, GL_VERTEX_SHADER);
+        int fragmentShaderID = createShader(fragmentShaderSource->second, GL_FRAGMENT_SHADER);
+        if(vertexShaderID < 0 || fragmentShaderID < 0) {
+            m_compiled = false;
+            return;
+        }
 
         m_shaderProgramID = createShaderProgram(vertexShaderID, fragmentShaderID);
         useShader();
@@ -31,7 +35,10 @@ Shader::Shader(const char* filepath) {
     }
     else {
         std::cout << "ERROR: No vertex and/or fragment shader" << std::endl;
+        m_compiled = false;
+        return;
     }
+    m_compiled = true;
 }
 
 Shader::~Shader() {
@@ -212,7 +219,7 @@ std::unordered_map<std::string, std::string> getSourcesFromFile(const char* file
     return shaderSections;
 }
 
-unsigned int createShader(const std::string& source, GLenum shaderType) {
+int createShader(const std::string& source, GLenum shaderType) {
     unsigned int shaderID = glCreateShader(shaderType);
 
     const char* shaderSourceCstr = source.c_str();
@@ -226,6 +233,7 @@ unsigned int createShader(const std::string& source, GLenum shaderType) {
     if(!success) {
         glGetShaderInfoLog(shaderID, 512, NULL, infoLog);
         std::cout << "ERROR: SHADER COMPILATION FAILED\n" << infoLog << std::endl;
+        return -1;
     }
 
     return shaderID;
@@ -235,7 +243,7 @@ void deleteShader(unsigned int shaderID) {
     glDeleteShader(shaderID);
 }
 
-unsigned int createShaderProgram(unsigned int vertexShaderID, unsigned int fragmentShaderID) {
+int createShaderProgram(unsigned int vertexShaderID, unsigned int fragmentShaderID) {
     unsigned int shaderProgramID = glCreateProgram();
 
     glAttachShader(shaderProgramID, vertexShaderID);

@@ -11,6 +11,8 @@ public:
     Shader(const char* filepath);
     ~Shader();
 
+    bool compiledSuccessfully() { return m_compiled; }
+
     void useShader();
     void bindTextures();
 
@@ -51,6 +53,7 @@ private:
 
 private:
     unsigned int m_shaderProgramID;
+    bool m_compiled;
 
     std::unordered_map<const char*, int> m_uniformLocations;
     std::unordered_map<unsigned int, std::weak_ptr<Texture>> m_textures;
