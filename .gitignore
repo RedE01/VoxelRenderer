@@ -3,3 +3,4 @@ Makefile
 *.make
 **/bin/**
 **/bin-int/**
+**.xraw
