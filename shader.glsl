@@ -39,7 +39,7 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
 };
 
 uniform vec3 u_cameraPos;
-uniform float u_cameraDir;
+uniform mat3 u_cameraRotMatrix;
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
 uniform uint u_chunkWidth;
@@ -181,23 +181,23 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
     return result;
 }
 
+vec3 getCameraRayDir(vec2 screenSpaceCoordinates, mat3 cameraRotMatrix, float aspectRatio, float fov) {
+    vec3 rayDirCamera;
+    rayDirCamera.x = screenSpaceCoordinates.x * tan(fov) * aspectRatio;
+    rayDirCamera.y = screenSpaceCoordinates.y * tan(fov);
+    rayDirCamera.z = -1.0;
+    rayDirCamera = normalize(rayDirCamera);
+
+    return cameraRotMatrix * rayDirCamera;
+}
+
 void main() {
     vec3 pos = vec3(u_cameraPos);
 
     float aspectRatio = u_windowSize.x / float(u_windowSize.y);
     vec2 screenSpaceCoordinates = fragPos - vec2(0.5, 0.5);
 
-    vec3 rayDirCamera;
-    rayDirCamera.x = screenSpaceCoordinates.x * tan(u_fov) * aspectRatio;
-    rayDirCamera.y = screenSpaceCoordinates.y * tan(u_fov);
-    rayDirCamera.z = -1.0;
-    rayDirCamera = normalize(rayDirCamera);
-
-    vec3 rayDir;
-    rayDir.x = rayDirCamera.x * cos(u_cameraDir) - rayDirCamera.z * sin(u_cameraDir);
-    rayDir.y = rayDirCamera.y;
-    rayDir.z = rayDirCamera.x * sin(u_cameraDir) + rayDirCamera.z * cos(u_cameraDir);
-    rayDir = normalize(rayDir);
+    vec3 rayDir = getCameraRayDir(screenSpaceCoordinates, u_cameraRotMatrix, aspectRatio, u_fov);
 
     gBufferData gbd = getGBufferData(pos, rayDir, 100);
     gAlbedo = gbd.albedo;

@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <cstring>
 #include <chrono>
@@ -60,7 +61,7 @@ int main(void) {
     initializeDebugger();
     #endif
 
-    VoxelData voxelData = VoxelLoader::loadVoxelData("monu1.xraw", VoxelDataAxis::Z_Up);
+    VoxelData voxelData = VoxelLoader::loadVoxelData("world.xraw", VoxelDataAxis::Z_Up);
     uint8_t* world = voxelData.voxelData;
     glm::vec3* palette = (glm::vec3*)voxelData.paletteData;
 
@@ -117,22 +118,34 @@ int main(void) {
     normalTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
     normalTexture->setFilterMode(TextureFilterMode::NEAREST);
 
-    std::shared_ptr<Texture> posTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    posTexture->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
-    posTexture->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> posTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    posTexture0->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture0->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> posTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    posTexture1->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture1->setFilterMode(TextureFilterMode::NEAREST);
+    std::weak_ptr<Texture> posTexture = posTexture0;
+    std::weak_ptr<Texture> prevPosTexture = posTexture1;
 
     gBuffer.attachTexture(albedoTexture.get(), 0);
     gBuffer.attachTexture(normalTexture.get(), 1);
-    gBuffer.attachTexture(posTexture.get(), 2);
+    gBuffer.attachTexture(posTexture.lock().get(), 2);
 
     gBuffer.unbind();
 
     Framebuffer lightingFrameBuffer;
     lightingFrameBuffer.bind();
-    std::shared_ptr<Texture> frameTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    frameTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
-    frameTexture->setFilterMode(TextureFilterMode::NEAREST);
-    lightingFrameBuffer.attachTexture(frameTexture.get(), 0);
+
+    std::shared_ptr<Texture> frameTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    frameTexture0->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    frameTexture0->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> frameTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    frameTexture1->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    frameTexture1->setFilterMode(TextureFilterMode::NEAREST);
+    std::weak_ptr<Texture> frameTexture = frameTexture0;
+    std::weak_ptr<Texture> prevFrameTexture = frameTexture1;
+
+    lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
     lightingFrameBuffer.unbind();
 
     Shader gBufferShader("shader.glsl");
@@ -154,18 +167,26 @@ int main(void) {
     lightingShader.setUniform1ui("u_worldWidth", octree.worldWidth);
     lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     lightingShader.setUniform1ui("u_chunkWidth", octree.worldWidth / std::pow(2, octree.maxDepth));
+    lightingShader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
+    lightingShader.setUniform1f("u_fov", 1.0);
 
     lightingShader.setTexture(albedoTexture, 0, "u_gAlbedo");
     lightingShader.setTexture(normalTexture, 1, "u_gNormal");
     lightingShader.setTexture(posTexture, 2, "u_gPos");
+    lightingShader.setTexture(prevPosTexture, 3, "u_prevPosTexture");
+    lightingShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
 
     postProcessShader.useShader();
     postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
     postProcessShader.setTexture(albedoTexture, 1, "u_gAlbedo");
     postProcessShader.setTexture(normalTexture, 2, "u_gNormal");
+    postProcessShader.setTexture(posTexture, 3, "u_gPos");
 
     glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
+    glm::vec3 lastPosition = position;
     double cameraAngle = 8.8025;
+    glm::mat3 cameraRotMatrix; 
+    glm::mat3 lastCameraRotMatrix;
     double xMousePos, yMousePos;
     glfwGetCursorPos(window, &xMousePos, &yMousePos);
 
@@ -178,6 +199,7 @@ int main(void) {
     double deltaTime = 0.0;
 
     int outputImageSelection = 0;
+    float taaAlpha = 0.1;
 
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
@@ -196,17 +218,12 @@ int main(void) {
         }
         deltaTime = d.count() / 1000000000.0;
 
-        gBuffer.bind();
-        
-        glClear(GL_COLOR_BUFFER_BIT);
-        
-        gBufferShader.useShader();
-        vao.bind();
-
+        // Camera movement
         if(cursorHidden) cameraAngle = xMousePos / 400.0;
         float movementSpeed = 0.1;
         glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, -cos(cameraAngle));
         glm::vec3 strafeVector = glm::cross(forwardVector, glm::vec3(0.0, 1.0, 0.0));
+        lastPosition = position;
         if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) movementSpeed *= 5;
         if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) position += movementSpeed * forwardVector;
         if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) position -= movementSpeed * strafeVector;
@@ -214,10 +231,11 @@ int main(void) {
         if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) position += movementSpeed * strafeVector;
         if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) position.y += movementSpeed;
         if(glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) position.y -= movementSpeed;
+        
+        lastCameraRotMatrix = cameraRotMatrix;
+        cameraRotMatrix = glm::mat3(glm::rotate(glm::mat4(1.0), (float)-cameraAngle, glm::vec3(0.0, 1.0, 0.0)));
 
         glfwGetCursorPos(window, &xMousePos, &yMousePos);
-        gBufferShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
-        gBufferShader.setUniform1f("u_cameraDir", cameraAngle);
 
         if(glfwGetKey(window, GLFW_KEY_ESCAPE)) {
             if(cursorHidden) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -225,27 +243,55 @@ int main(void) {
             cursorHidden = !cursorHidden;
         }
 
+        // Render g buffer
+        gBuffer.bind();
+        // glClear(GL_COLOR_BUFFER_BIT);
+        gBufferShader.useShader();
+        vao.bind();
+
+        gBufferShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
+        gBufferShader.setUniformMat3("u_cameraRotMatrix", cameraRotMatrix);
+
+        std::swap(posTexture, prevPosTexture);
+        gBuffer.attachTexture(posTexture.lock().get(), 2);
+        
         gBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
+        // Lighting calculations
         lightingFrameBuffer.bind();
         lightingShader.useShader();
         lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
+        lightingShader.setUniformMat3("u_lastCameraRotMatrix", lastCameraRotMatrix);
+        lightingShader.setUniform3f("u_lastCameraPos", lastPosition.x, lastPosition.y, lastPosition.z);
+        lightingShader.setUniform1f("u_taaAlpha", taaAlpha);
+
+        std::swap(frameTexture, prevFrameTexture);
+        lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
+        lightingShader.setTexture(posTexture, 2, "u_gPos");
+        lightingShader.setTexture(prevPosTexture, 3, "u_prevPosTexture");
+        lightingShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
+
         lightingShader.bindTextures();
         
         lightingFrameBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        // Render final frame
         lightingFrameBuffer.unbind();
         postProcessShader.useShader();
+        postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
         postProcessShader.bindTextures();
         postProcessShader.setUniform1i("u_frameTexture", outputImageSelection);
         
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        // Render GUI
         ImGui::RadioButton("Show final image", &outputImageSelection, 0);
         ImGui::RadioButton("Show albedo buffer", &outputImageSelection, 1);
         ImGui::RadioButton("Show normal buffer", &outputImageSelection, 2);
+
+        ImGui::SliderFloat("TAA alpha", &taaAlpha, 0.0, 1.0, "%f");
 
         if(ImGui::Button("Hide cursor")) {
             cursorHidden = true;
@@ -256,7 +302,6 @@ int main(void) {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
-
         glfwPollEvents();
     }
 
