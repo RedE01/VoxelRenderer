@@ -34,8 +34,9 @@ void Framebuffer::attachTexture(Texture* texture, unsigned int attachment) {
     else if(texture->getTextureFormat() == TextureFormat::DEPTH_STENCIL) attachmentPoint = GL_DEPTH_STENCIL_ATTACHMENT;
     else {
         attachmentPoint = GL_COLOR_ATTACHMENT0 + attachment;
-        m_colorAttachments.erase(std::remove(m_colorAttachments.begin(), m_colorAttachments.end(), attachmentPoint), m_colorAttachments.end());
-        m_colorAttachments.push_back(attachmentPoint);
+        if(std::find(m_colorAttachments.begin(), m_colorAttachments.end(), attachmentPoint) == m_colorAttachments.end()) {
+            m_colorAttachments.insert(std::upper_bound(m_colorAttachments.begin(), m_colorAttachments.end(), attachmentPoint), attachmentPoint);
+        }
     }
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint, texture->getTextureTypeID(), texture->getTextureID(), 0);
