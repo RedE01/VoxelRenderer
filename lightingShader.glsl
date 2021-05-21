@@ -33,8 +33,11 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gNormal;
 uniform sampler2D u_gPos;
+uniform usampler2D u_gVoxelIDTexture;
+uniform sampler2D u_prevNormalTexture;
 uniform sampler2D u_prevPosTexture;
 uniform sampler2D u_prevFrameTexture;
+uniform usampler2D u_prevVoxelIDTexture;
 
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
@@ -209,7 +212,7 @@ void main() {
     vec3 pos = texture(u_gPos, fragPos).xyz;
 
     uint maxIterations = (albedo.x < 0.0) ? 0 : 16;
-    float maxDistance = 32.0;
+    float maxDistance = 16.0;
     vec3 rayDir = getRandomRayDir(normal, fragPos, u_deltaTime);
     float rayLength = getRayLength(pos + rayDir * 0.01, rayDir, maxIterations, maxDistance);
     float oclusion = rayLength / maxDistance;
@@ -230,8 +233,11 @@ void main() {
             for(int y = -1; y <= 1; ++y) {
                 vec2 pixelPos = screenSpaceCoordinates + vec2(x * pixelSize.x, y * pixelSize.y);
 
+                uint currentVoxelID = texture(u_gVoxelIDTexture, fragPos).r;
+                uint prevVoxelID = texture(u_prevVoxelIDTexture, pixelPos).r;
+                vec3 prevNormal = texture(u_prevNormalTexture, pixelPos).rgb;
                 vec3 lastFragmentPos = texture(u_prevPosTexture, pixelPos).xyz;
-                if(distance(pos, lastFragmentPos) < 0.5 && pixelPos.x >= -1.0 && pixelPos.x <= 1.0 && pixelPos.y >= -1.0 && pixelPos.y <= 1.0) {
+                if(normal == prevNormal && currentVoxelID == prevVoxelID && distance(pos, lastFragmentPos) < 0.5 && pixelPos.x >= -1.0 && pixelPos.x <= 1.0 && pixelPos.y >= -1.0 && pixelPos.y <= 1.0) {
                     float weight = 1.0 - distance(pos, lastFragmentPos);
                     res += texture(u_prevFrameTexture, pixelPos).xyz * weight;
                     n += weight;

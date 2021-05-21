@@ -16,6 +16,7 @@ void main() {
 layout (location = 0) out vec3 gAlbedo;
 layout (location = 1) out vec3 gNormal;
 layout (location = 2) out vec3 gPos;
+layout (location = 3) out uint gVoxelID;
 
 struct OctreeNode {
     uint parentIndex;
@@ -28,6 +29,7 @@ struct gBufferData {
     vec3 albedo;
     vec3 normal;
     vec3 pos;
+    uint voxelID;
 };
 
 layout(std430, binding = 0) buffer OctreeSSBO {
@@ -155,6 +157,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
                     result.albedo = u_palette[voxelPaletteIndex];
                     result.normal = normal;
                     result.pos = cameraPos + rayLength * rayDir;
+                    result.voxelID = voxelPaletteIndex;
                     return result;
                 }
             }
@@ -166,6 +169,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
             result.albedo = u_palette[octreeNodes[currentOctreeNodeID].dataIndex];
             result.pos = cameraPos + rayLength * rayDir;
             result.normal = normal;
+            result.voxelID = octreeNodes[currentOctreeNodeID].dataIndex;
             return result;
         }
 
@@ -178,6 +182,7 @@ gBufferData getGBufferData(vec3 pos, vec3 rayDir, uint maxIterations) {
     result.albedo = vec3(-1.0, -1.0, -1.0);
     result.normal = vec3(0.0, 0.0, 0.0);
     result.pos = vec3(0.0, 0.0, 0.0);
+    result.voxelID = 0;
     return result;
 }
 
@@ -203,4 +208,5 @@ void main() {
     gAlbedo = gbd.albedo;
     gNormal = gbd.normal;
     gPos = gbd.pos;
+    gVoxelID = gbd.voxelID;
 }

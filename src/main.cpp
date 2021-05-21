@@ -111,25 +111,40 @@ int main(void) {
     gBuffer.bind();
 
     std::shared_ptr<Texture> albedoTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    albedoTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    albedoTexture->textureImage2D(TextureFormat::RGB16F, windowSize.x, windowSize.y, (float*)NULL);
     albedoTexture->setFilterMode(TextureFilterMode::NEAREST);
 
-    std::shared_ptr<Texture> normalTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    normalTexture->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
-    normalTexture->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> normalTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    normalTexture0->textureImage2D(TextureFormat::RGB16F, windowSize.x, windowSize.y, (float*)NULL);
+    normalTexture0->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> normalTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    normalTexture1->textureImage2D(TextureFormat::RGB16F, windowSize.x, windowSize.y, (float*)NULL);
+    normalTexture1->setFilterMode(TextureFilterMode::NEAREST);
+    std::weak_ptr<Texture> normalTexture = normalTexture0;
+    std::weak_ptr<Texture> prevNormalTexture = normalTexture1;
 
     std::shared_ptr<Texture> posTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    posTexture0->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture0->textureImage2D(TextureFormat::RGB32F, windowSize.x, windowSize.y, (float*)NULL);
     posTexture0->setFilterMode(TextureFilterMode::NEAREST);
     std::shared_ptr<Texture> posTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    posTexture1->textureImage2D(TextureFormat::RGBA32F, windowSize.x, windowSize.y, (float*)NULL);
+    posTexture1->textureImage2D(TextureFormat::RGB32F, windowSize.x, windowSize.y, (float*)NULL);
     posTexture1->setFilterMode(TextureFilterMode::NEAREST);
     std::weak_ptr<Texture> posTexture = posTexture0;
     std::weak_ptr<Texture> prevPosTexture = posTexture1;
 
+    std::shared_ptr<Texture> voxelIDTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    voxelIDTexture0->textureImage2D(TextureFormat::R8UI, windowSize.x, windowSize.y, (unsigned char*)NULL);
+    voxelIDTexture0->setFilterMode(TextureFilterMode::NEAREST);
+    std::shared_ptr<Texture> voxelIDTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    voxelIDTexture1->textureImage2D(TextureFormat::R8UI, windowSize.x, windowSize.y, (unsigned char*)NULL);
+    voxelIDTexture1->setFilterMode(TextureFilterMode::NEAREST);
+    std::weak_ptr<Texture> voxelIDTexture = voxelIDTexture0;
+    std::weak_ptr<Texture> prevVoxelIDTexture = voxelIDTexture1;
+
     gBuffer.attachTexture(albedoTexture.get(), 0);
-    gBuffer.attachTexture(normalTexture.get(), 1);
+    gBuffer.attachTexture(normalTexture.lock().get(), 1);
     gBuffer.attachTexture(posTexture.lock().get(), 2);
+    gBuffer.attachTexture(voxelIDTexture.lock().get(), 3);
 
     gBuffer.unbind();
 
@@ -173,8 +188,11 @@ int main(void) {
     lightingShader.setTexture(albedoTexture, 0, "u_gAlbedo");
     lightingShader.setTexture(normalTexture, 1, "u_gNormal");
     lightingShader.setTexture(posTexture, 2, "u_gPos");
-    lightingShader.setTexture(prevPosTexture, 3, "u_prevPosTexture");
-    lightingShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
+    lightingShader.setTexture(voxelIDTexture, 3, "u_gVoxelIDTexture");
+    lightingShader.setTexture(prevNormalTexture, 4, "u_prevNormalTexture");
+    lightingShader.setTexture(prevPosTexture, 5, "u_prevPosTexture");
+    lightingShader.setTexture(prevFrameTexture, 6, "u_prevFrameTexture");
+    lightingShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
 
     postProcessShader.useShader();
     postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
@@ -252,8 +270,9 @@ int main(void) {
         gBufferShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
         gBufferShader.setUniformMat3("u_cameraRotMatrix", cameraRotMatrix);
 
-        std::swap(posTexture, prevPosTexture);
+        gBuffer.attachTexture(normalTexture.lock().get(), 1);
         gBuffer.attachTexture(posTexture.lock().get(), 2);
+        gBuffer.attachTexture(voxelIDTexture.lock().get(), 3);
         
         gBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -266,11 +285,14 @@ int main(void) {
         lightingShader.setUniform3f("u_lastCameraPos", lastPosition.x, lastPosition.y, lastPosition.z);
         lightingShader.setUniform1f("u_taaAlpha", taaAlpha);
 
-        std::swap(frameTexture, prevFrameTexture);
         lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
+        lightingShader.setTexture(normalTexture, 1, "u_gNormal");
         lightingShader.setTexture(posTexture, 2, "u_gPos");
-        lightingShader.setTexture(prevPosTexture, 3, "u_prevPosTexture");
-        lightingShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
+        lightingShader.setTexture(voxelIDTexture, 3, "u_gVoxelIDTexture");
+        lightingShader.setTexture(prevNormalTexture, 4, "u_prevNormalTexture");
+        lightingShader.setTexture(prevPosTexture, 5, "u_prevPosTexture");
+        lightingShader.setTexture(prevFrameTexture, 6, "u_prevFrameTexture");
+        lightingShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
 
         lightingShader.bindTextures();
         
@@ -281,6 +303,7 @@ int main(void) {
         lightingFrameBuffer.unbind();
         postProcessShader.useShader();
         postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
+        postProcessShader.setTexture(normalTexture, 2, "u_gNormal");
         postProcessShader.bindTextures();
         postProcessShader.setUniform1i("u_frameTexture", outputImageSelection);
         
@@ -300,6 +323,11 @@ int main(void) {
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        std::swap(frameTexture, prevFrameTexture);
+        std::swap(normalTexture, prevNormalTexture);
+        std::swap(posTexture, prevPosTexture);
+        std::swap(voxelIDTexture, prevVoxelIDTexture);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
