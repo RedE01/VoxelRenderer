@@ -26,7 +26,8 @@ project "VoxelRenderer"
 		"vendor/GLEW/glew/include",
 		"vendor/GLFW/glfw/include",
 		"vendor/GLM/glm/",
-		"vendor/IMGUI/imgui"
+		"vendor/IMGUI/imgui",
+		"vendor/STB"
 	}
 
 	links {
