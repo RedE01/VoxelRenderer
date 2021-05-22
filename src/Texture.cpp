@@ -3,6 +3,9 @@
 
 #include <iostream>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 unsigned int getOpenGLTextureType(TextureType textureType);
 unsigned int getOpenGLFilterMode(TextureFilterMode filterMode);
 unsigned int getOpenGLWrapMode(TextureWrapMode wrapMode);
@@ -16,6 +19,34 @@ Texture::Texture(TextureType textureType) {
 
 Texture::~Texture() {
     glDeleteTextures(1, &m_textureID);    
+}
+
+void Texture::textureImage2D(const char* filename, unsigned int channels) {
+    int x;
+    int y;
+    int n;
+    unsigned char* data = stbi_load(filename, &x, &y, &n, channels);
+
+    if(data == nullptr) {
+        std::cout << "Could not open texture image: " << filename << std::endl;
+        return;
+    }
+    if(channels != 0) n = channels;
+
+    if(n > 0 && n <= 5) {
+        TextureFormat textureFormat;
+
+        switch(n) {
+            case 1: textureFormat = TextureFormat::R8; break;
+            case 2: textureFormat = TextureFormat::RG8; break;
+            case 3: textureFormat = TextureFormat::RGB8; break;
+            case 4: textureFormat = TextureFormat::RGBA8; break;
+        }
+
+        textureImage2dInternal(textureFormat, x, y, data, GL_BYTE);
+    }
+
+    stbi_image_free(data);
 }
 
 void Texture::textureImage2D(TextureFormat textureFormat, unsigned int width, unsigned int height, char* data) {

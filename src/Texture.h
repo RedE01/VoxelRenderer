@@ -23,6 +23,7 @@ public:
     Texture(TextureType textureType);
     ~Texture();
 
+    void textureImage2D(const char* filename, unsigned int channels = 0);
     void textureImage2D(TextureFormat textureFormat, unsigned int width, unsigned int height, char* data);
     void textureImage2D(TextureFormat textureFormat, unsigned int width, unsigned int height, unsigned char* data);
     void textureImage2D(TextureFormat textureFormat, unsigned int width, unsigned int height, short* data);
