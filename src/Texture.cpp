@@ -37,13 +37,12 @@ void Texture::textureImage2D(const char* filename, unsigned int channels) {
         TextureFormat textureFormat;
 
         switch(n) {
-            case 1: textureFormat = TextureFormat::R8; break;
-            case 2: textureFormat = TextureFormat::RG8; break;
-            case 3: textureFormat = TextureFormat::RGB8; break;
-            case 4: textureFormat = TextureFormat::RGBA8; break;
+            case 1: textureFormat = TextureFormat::R; break;
+            case 2: textureFormat = TextureFormat::RG; break;
+            case 3: textureFormat = TextureFormat::RGB; break;
+            case 4: textureFormat = TextureFormat::RGBA; break;
         }
-
-        textureImage2dInternal(textureFormat, x, y, data, GL_BYTE);
+        textureImage2dInternal(textureFormat, x, y, data, GL_UNSIGNED_BYTE);
     }
 
     stbi_image_free(data);
@@ -113,6 +112,8 @@ void Texture::textureImage2dInternal(TextureFormat textureFormat, unsigned int w
     std::pair<int, int> openGLformats = getOpenGLTextureFormats(textureFormat);
     glTexImage2D(m_textureTypeID, 0, openGLformats.first, width, height, 0, openGLformats.second, type, data);
     m_textureFormat = textureFormat;
+    m_width = width;
+    m_height = height;
 }
 
 unsigned int getOpenGLTextureType(TextureType textureType) {
@@ -147,6 +148,10 @@ unsigned int getOpenGLWrapMode(TextureWrapMode wrapMode) {
 std::pair<int, int> getOpenGLTextureFormats(TextureFormat textureFormat) {
     int internalFormat, format;
     switch(textureFormat) {
+        case TextureFormat::R: internalFormat = GL_RED; format = GL_RED; break;
+        case TextureFormat::RG: internalFormat = GL_RG; format = GL_RG; break;
+        case TextureFormat::RGB: internalFormat = GL_RGB; format = GL_RGB; break;
+        case TextureFormat::RGBA: internalFormat = GL_RGBA; format = GL_RGBA; break;
         case TextureFormat::R8: internalFormat = GL_R8; format = GL_RED; break;
         case TextureFormat::R16: internalFormat = GL_R16; format = GL_RED; break;
         case TextureFormat::RG8: internalFormat = GL_RG8; format = GL_RG; break;
