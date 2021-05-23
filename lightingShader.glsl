@@ -38,6 +38,7 @@ uniform sampler2D u_prevNormalTexture;
 uniform sampler2D u_prevPosTexture;
 uniform sampler2D u_prevFrameTexture;
 uniform usampler2D u_prevVoxelIDTexture;
+uniform sampler2D u_blueNoiseTexture;
 
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
@@ -48,12 +49,15 @@ uniform mat3 u_lastCameraRotMatrix;
 uniform vec3 u_lastCameraPos;
 uniform float u_fov;
 uniform float u_taaAlpha;
+uniform vec2 u_noiseTextureScale;
+uniform float u_frame;
 
 in vec2 fragPos;
 
-uniform float u_deltaTime;
 
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
+float phi1 = 1.6180339887498948; // x^2 = x + 1
+float phi2 = 1.3247179572447460; // x^3 = x + 1
 
 uint getVoxelByte(uint chunkDataIndex, ivec3 iLocalPos) {
     uint localVoxelID = iLocalPos.x + iLocalPos.y * u_chunkWidth + iLocalPos.z * chunkWidthSquared;
@@ -178,14 +182,16 @@ float random(vec2 st) {
     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
 }
 
-vec3 getRandomRayDir(vec3 normal, vec2 screenPos, float deltaTime) {
-    float rand1 = random(screenPos + vec2(deltaTime, 0.0)) * 2.0 - 1.0;
-    float rand2 = random(screenPos + vec2(0.0, deltaTime)) * 2.0 - 1.0;
+vec3 getRandomRayDir(vec3 normal, vec2 noiseSamplePos, float frame) {
+    vec2 rand = texture(u_blueNoiseTexture, noiseSamplePos).xy;
+    rand.x = mod(rand.x + phi1 * mod(frame, 128.0), 1.0) * 2.0 - 1.0;
+    rand.y = mod(rand.y + phi2 * mod(frame, 128.0), 1.0) * 2.0 - 1.0;
+    rand *= 2.0;
 
     vec3 rayDir;
-    if(normal.x != 0.0) rayDir = vec3(normal.x, rand1, rand2);
-    else if(normal.y != 0.0) rayDir = vec3(rand1, normal.y, rand2);
-    else rayDir = vec3(rand1, rand2, normal.z);
+    if(normal.x != 0.0) rayDir = vec3(normal.x, rand.x, rand.y);
+    else if(normal.y != 0.0) rayDir = vec3(rand.x, normal.y, rand.y);
+    else rayDir = vec3(rand.x, rand.y, normal.z);
     
     rayDir = normalize(rayDir);
 
@@ -213,7 +219,7 @@ void main() {
 
     uint maxIterations = (albedo.x < 0.0) ? 0 : 16;
     float maxDistance = 16.0;
-    vec3 rayDir = getRandomRayDir(normal, fragPos, u_deltaTime);
+    vec3 rayDir = getRandomRayDir(normal, fragPos * u_noiseTextureScale, u_frame);
     float rayLength = getRayLength(pos + rayDir * 0.01, rayDir, maxIterations, maxDistance);
     float oclusion = rayLength / maxDistance;
     oclusion = min(pow(oclusion, 0.8), 1.0);

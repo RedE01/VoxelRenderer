@@ -61,7 +61,7 @@ int main(void) {
     initializeDebugger();
     #endif
 
-    VoxelData voxelData = VoxelLoader::loadVoxelData("world.xraw", VoxelDataAxis::Z_Up);
+    VoxelData voxelData = VoxelLoader::loadVoxelData("assets/world.xraw", VoxelDataAxis::Z_Up);
     uint8_t* world = voxelData.voxelData;
     glm::vec3* palette = (glm::vec3*)voxelData.paletteData;
 
@@ -160,6 +160,12 @@ int main(void) {
     std::weak_ptr<Texture> frameTexture = frameTexture0;
     std::weak_ptr<Texture> prevFrameTexture = frameTexture1;
 
+    std::shared_ptr<Texture> blueNoiseTexture = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    blueNoiseTexture->textureImage2D("assets/blueNoise.png", 3);
+    blueNoiseTexture->setFilterMode(TextureFilterMode::NEAREST);
+    blueNoiseTexture->setWrapModeR(TextureWrapMode::REPEAT);
+    blueNoiseTexture->setWrapModeS(TextureWrapMode::REPEAT);
+
     lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
     lightingFrameBuffer.unbind();
 
@@ -193,6 +199,7 @@ int main(void) {
     lightingShader.setTexture(prevPosTexture, 5, "u_prevPosTexture");
     lightingShader.setTexture(prevFrameTexture, 6, "u_prevFrameTexture");
     lightingShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
+    lightingShader.setTexture(blueNoiseTexture, 8, "u_blueNoiseTexture");
 
     postProcessShader.useShader();
     postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
@@ -215,10 +222,11 @@ int main(void) {
     int frameCounter = 0;
 
     double deltaTime = 0.0;
+    int frame = 0;
 
     int outputImageSelection = 0;
     float taaAlpha = 0.1;
-
+    
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -235,6 +243,7 @@ int main(void) {
             frameCounter = 0;
         }
         deltaTime = d.count() / 1000000000.0;
+        frame++;
 
         // Camera movement
         if(cursorHidden) cameraAngle = xMousePos / 400.0;
@@ -280,10 +289,11 @@ int main(void) {
         // Lighting calculations
         lightingFrameBuffer.bind();
         lightingShader.useShader();
-        lightingShader.setUniform1f("u_deltaTime", float(deltaTime));
         lightingShader.setUniformMat3("u_lastCameraRotMatrix", lastCameraRotMatrix);
         lightingShader.setUniform3f("u_lastCameraPos", lastPosition.x, lastPosition.y, lastPosition.z);
         lightingShader.setUniform1f("u_taaAlpha", taaAlpha);
+        lightingShader.setUniform1f("u_frame", float(frame));
+        lightingShader.setUniform2f("u_noiseTextureScale", (float)windowSize.x / (float)blueNoiseTexture->getWidth(), (float)windowSize.y / (float)blueNoiseTexture->getHeight());
 
         lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
         lightingShader.setTexture(normalTexture, 1, "u_gNormal");
