@@ -33,27 +33,16 @@ layout(std430, binding = 1) buffer ChunkDataSSBO {
 uniform sampler2D u_gAlbedo;
 uniform sampler2D u_gNormal;
 uniform sampler2D u_gPos;
-uniform usampler2D u_gVoxelIDTexture;
-uniform sampler2D u_prevNormalTexture;
-uniform sampler2D u_prevPosTexture;
-uniform sampler2D u_prevFrameTexture;
-uniform usampler2D u_prevVoxelIDTexture;
 uniform sampler2D u_blueNoiseTexture;
 
 uniform uint u_worldWidth;
 uniform uint u_maxOctreeDepth;
 uniform uint u_chunkWidth;
 
-uniform ivec2 u_windowSize;
-uniform mat3 u_lastCameraRotMatrix;
-uniform vec3 u_lastCameraPos;
-uniform float u_fov;
-uniform float u_taaAlpha;
 uniform vec2 u_noiseTextureScale;
 uniform float u_frame;
 
 in vec2 fragPos;
-
 
 uint chunkWidthSquared = u_chunkWidth * u_chunkWidth;
 float phi1 = 1.6180339887498948; // x^2 = x + 1
@@ -225,37 +214,5 @@ void main() {
     oclusion = min(pow(oclusion, 0.8), 1.0);
 
     vec3 currentPixelValue = albedo * oclusion;
-
-    vec3 accumulatedFramePixel = currentPixelValue;
-    if(albedo.x >= 0.0) {
-        float aspectRatio = u_windowSize.x / float(u_windowSize.y);
-        vec2 screenSpaceCoordinates = getScreenSpacePosition(pos, u_lastCameraPos, u_lastCameraRotMatrix, aspectRatio, u_fov);
-
-        vec2 pixelSize = 1.0 / vec2(u_windowSize);
-        float n = 0;
-        vec3 res = vec3(0.0);
-
-        for(int x = -1; x <= 1; ++x) {
-            for(int y = -1; y <= 1; ++y) {
-                vec2 pixelPos = screenSpaceCoordinates + vec2(x * pixelSize.x, y * pixelSize.y);
-
-                uint currentVoxelID = texture(u_gVoxelIDTexture, fragPos).r;
-                uint prevVoxelID = texture(u_prevVoxelIDTexture, pixelPos).r;
-                vec3 prevNormal = texture(u_prevNormalTexture, pixelPos).rgb;
-                vec3 lastFragmentPos = texture(u_prevPosTexture, pixelPos).xyz;
-                if(normal == prevNormal && currentVoxelID == prevVoxelID && distance(pos, lastFragmentPos) < 0.5 && pixelPos.x >= -1.0 && pixelPos.x <= 1.0 && pixelPos.y >= -1.0 && pixelPos.y <= 1.0) {
-                    float weight = 1.0 - distance(pos, lastFragmentPos);
-                    res += texture(u_prevFrameTexture, pixelPos).xyz * weight;
-                    n += weight;
-                }
-            }
-        }
-
-        if(n > 0) {
-            accumulatedFramePixel = res / n;
-        }
-
-    }
-
-    frameTexture = vec4((1.0 - u_taaAlpha) * accumulatedFramePixel.rgb + u_taaAlpha * currentPixelValue, 1.0);
+    frameTexture = vec4(currentPixelValue, 1.0);
 }

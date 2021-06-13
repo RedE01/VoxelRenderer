@@ -73,7 +73,6 @@ int main(void) {
         return -1;
     }
 
-
     Octree octree(world, voxelData.sizeX, 5);
 
     delete[] world;
@@ -173,6 +172,8 @@ int main(void) {
     if(!gBufferShader.compiledSuccessfully()) return -1;
     Shader lightingShader("lightingShader.glsl");
     if(!lightingShader.compiledSuccessfully()) return -1;
+    Shader taaShader("taaShader.glsl");
+    if(!taaShader.compiledSuccessfully()) return -1;
     Shader postProcessShader("postProcessShader.glsl");
     if(!postProcessShader.compiledSuccessfully()) return -1;
 
@@ -188,17 +189,10 @@ int main(void) {
     lightingShader.setUniform1ui("u_worldWidth", octree.worldWidth);
     lightingShader.setUniform1ui("u_maxOctreeDepth", octree.maxDepth);
     lightingShader.setUniform1ui("u_chunkWidth", octree.worldWidth / std::pow(2, octree.maxDepth));
-    lightingShader.setUniform2i("u_windowSize", windowSize.x, windowSize.y);
-    lightingShader.setUniform1f("u_fov", 1.0);
 
     lightingShader.setTexture(albedoTexture, 0, "u_gAlbedo");
     lightingShader.setTexture(normalTexture, 1, "u_gNormal");
     lightingShader.setTexture(posTexture, 2, "u_gPos");
-    lightingShader.setTexture(voxelIDTexture, 3, "u_gVoxelIDTexture");
-    lightingShader.setTexture(prevNormalTexture, 4, "u_prevNormalTexture");
-    lightingShader.setTexture(prevPosTexture, 5, "u_prevPosTexture");
-    lightingShader.setTexture(prevFrameTexture, 6, "u_prevFrameTexture");
-    lightingShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
     lightingShader.setTexture(blueNoiseTexture, 8, "u_blueNoiseTexture");
 
     postProcessShader.useShader();
@@ -208,10 +202,10 @@ int main(void) {
     postProcessShader.setTexture(posTexture, 3, "u_gPos");
 
     glm::vec3 position = glm::vec3(0.0, 0.0, 0.0);
-    glm::vec3 lastPosition = position;
+    glm::vec3 prevPosition = position;
     double cameraAngle = 8.8025;
     glm::mat3 cameraRotMatrix; 
-    glm::mat3 lastCameraRotMatrix;
+    glm::mat3 prevCameraRotMatrix;
     double xMousePos, yMousePos;
     glfwGetCursorPos(window, &xMousePos, &yMousePos);
 
@@ -250,7 +244,7 @@ int main(void) {
         float movementSpeed = 0.1;
         glm::vec3 forwardVector = glm::vec3(sin(cameraAngle), 0.0, -cos(cameraAngle));
         glm::vec3 strafeVector = glm::cross(forwardVector, glm::vec3(0.0, 1.0, 0.0));
-        lastPosition = position;
+        prevPosition = position;
         if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) movementSpeed *= 5;
         if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) position += movementSpeed * forwardVector;
         if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) position -= movementSpeed * strafeVector;
@@ -259,7 +253,7 @@ int main(void) {
         if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) position.y += movementSpeed;
         if(glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) position.y -= movementSpeed;
         
-        lastCameraRotMatrix = cameraRotMatrix;
+        prevCameraRotMatrix = cameraRotMatrix;
         cameraRotMatrix = glm::mat3(glm::rotate(glm::mat4(1.0), (float)-cameraAngle, glm::vec3(0.0, 1.0, 0.0)));
 
         glfwGetCursorPos(window, &xMousePos, &yMousePos);
@@ -289,25 +283,39 @@ int main(void) {
         // Lighting calculations
         lightingFrameBuffer.bind();
         lightingShader.useShader();
-        lightingShader.setUniformMat3("u_lastCameraRotMatrix", lastCameraRotMatrix);
-        lightingShader.setUniform3f("u_lastCameraPos", lastPosition.x, lastPosition.y, lastPosition.z);
-        lightingShader.setUniform1f("u_taaAlpha", taaAlpha);
         lightingShader.setUniform1f("u_frame", float(frame));
         lightingShader.setUniform2f("u_noiseTextureScale", (float)windowSize.x / (float)blueNoiseTexture->getWidth(), (float)windowSize.y / (float)blueNoiseTexture->getHeight());
 
         lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
         lightingShader.setTexture(normalTexture, 1, "u_gNormal");
         lightingShader.setTexture(posTexture, 2, "u_gPos");
-        lightingShader.setTexture(voxelIDTexture, 3, "u_gVoxelIDTexture");
-        lightingShader.setTexture(prevNormalTexture, 4, "u_prevNormalTexture");
-        lightingShader.setTexture(prevPosTexture, 5, "u_prevPosTexture");
-        lightingShader.setTexture(prevFrameTexture, 6, "u_prevFrameTexture");
-        lightingShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
 
         lightingShader.bindTextures();
         
         lightingFrameBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+        if(taaAlpha < 1.0) {
+            taaShader.useShader();
+            taaShader.setTexture(frameTexture, 0, "u_frameTexture");
+            taaShader.setTexture(normalTexture, 1, "u_normalTexture");
+            taaShader.setTexture(posTexture, 2, "u_posTexture");
+            taaShader.setTexture(voxelIDTexture, 3, "u_voxelIDTexture");
+            taaShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
+            taaShader.setTexture(prevNormalTexture, 5, "u_prevNormalTexture");
+            taaShader.setTexture(prevPosTexture, 6, "u_prevPosTexture");
+            taaShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
+
+            taaShader.setUniform3f("u_prevCameraPos", prevPosition.x, prevPosition.y, prevPosition.z);
+            taaShader.setUniformMat3("u_prevCameraRotMatrix", prevCameraRotMatrix);
+            taaShader.setUniform2f("u_windowSize", (float)windowSize.x, (float)windowSize.y);
+            taaShader.setUniform1f("u_fov", 1.0);
+            taaShader.setUniform1f("u_taaAlpha", taaAlpha);
+
+            taaShader.bindTextures();
+
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
 
         // Render final frame
         lightingFrameBuffer.unbind();
