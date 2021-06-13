@@ -220,7 +220,7 @@ int main(void) {
 
     int outputImageSelection = 0;
     float taaAlpha = 0.1;
-    
+
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -306,6 +306,7 @@ int main(void) {
             taaShader.setTexture(prevPosTexture, 6, "u_prevPosTexture");
             taaShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
 
+            taaShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
             taaShader.setUniform3f("u_prevCameraPos", prevPosition.x, prevPosition.y, prevPosition.z);
             taaShader.setUniformMat3("u_prevCameraRotMatrix", prevCameraRotMatrix);
             taaShader.setUniform2f("u_windowSize", (float)windowSize.x, (float)windowSize.y);

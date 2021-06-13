@@ -25,6 +25,7 @@ uniform sampler2D u_prevNormalTexture;
 uniform sampler2D u_prevPosTexture;
 uniform usampler2D u_prevVoxelIDTexture;
 
+uniform vec3 u_cameraPos;
 uniform mat3 u_prevCameraRotMatrix;
 uniform vec3 u_prevCameraPos;
 uniform vec2 u_windowSize;
@@ -65,8 +66,12 @@ void main() {
             uint prevVoxelID = texture(u_prevVoxelIDTexture, pixelPos).r;
             vec3 prevNormal = texture(u_prevNormalTexture, pixelPos).rgb;
             vec3 lastFragmentPos = texture(u_prevPosTexture, pixelPos).xyz;
-            if(normal == prevNormal && voxelID == prevVoxelID && distance(pos, lastFragmentPos) < 0.5 && pixelPos.x >= -1.0 && pixelPos.x <= 1.0 && pixelPos.y >= -1.0 && pixelPos.y <= 1.0) {
-                float weight = 1.0 - distance(pos, lastFragmentPos);
+            
+            vec3 deltaFragmentPos = pos - lastFragmentPos;
+            vec3 deltaCameraPos = pos - u_cameraPos;
+            float dist = dot(deltaFragmentPos, deltaFragmentPos) / dot(deltaCameraPos, deltaCameraPos);
+            if(normal == prevNormal && voxelID == prevVoxelID && dist < 0.25 && pixelPos.x >= -1.0 && pixelPos.x <= 1.0 && pixelPos.y >= -1.0 && pixelPos.y <= 1.0) {
+                float weight = 1.0 - dist;
                 accumulatedPixel += texture(u_prevFrameTexture, pixelPos).xyz * weight;
                 n += weight;
             }
