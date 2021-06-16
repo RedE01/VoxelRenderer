@@ -26,7 +26,6 @@ void Framebuffer::setDrawBuffers() {
 
 void Framebuffer::attachTexture(Texture* texture, unsigned int attachment) {
     bind();
-    texture->bind();
     
     unsigned int attachmentPoint;
     if(texture->getTextureFormat() == TextureFormat::STENCIL_INDEX) attachmentPoint = GL_STENCIL_ATTACHMENT;
