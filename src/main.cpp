@@ -131,19 +131,9 @@ int main(void) {
     std::weak_ptr<Texture> posTexture = posTexture0;
     std::weak_ptr<Texture> prevPosTexture = posTexture1;
 
-    std::shared_ptr<Texture> voxelIDTexture0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    voxelIDTexture0->textureImage2D(TextureFormat::R8UI, windowSize.x, windowSize.y, (unsigned char*)NULL);
-    voxelIDTexture0->setFilterMode(TextureFilterMode::NEAREST);
-    std::shared_ptr<Texture> voxelIDTexture1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
-    voxelIDTexture1->textureImage2D(TextureFormat::R8UI, windowSize.x, windowSize.y, (unsigned char*)NULL);
-    voxelIDTexture1->setFilterMode(TextureFilterMode::NEAREST);
-    std::weak_ptr<Texture> voxelIDTexture = voxelIDTexture0;
-    std::weak_ptr<Texture> prevVoxelIDTexture = voxelIDTexture1;
-
     gBuffer.attachTexture(albedoTexture.get(), 0);
     gBuffer.attachTexture(normalTexture.lock().get(), 1);
     gBuffer.attachTexture(posTexture.lock().get(), 2);
-    gBuffer.attachTexture(voxelIDTexture.lock().get(), 3);
 
     gBuffer.unbind();
 
@@ -220,6 +210,9 @@ int main(void) {
 
     int outputImageSelection = 0;
     float taaAlpha = 0.1;
+    float taaDistWeightScaler = 50.0;
+    float taaNormalWeightScaler = 50.0;
+    float taaColorWeightScaler = 50.0;
 
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
@@ -275,7 +268,6 @@ int main(void) {
 
         gBuffer.attachTexture(normalTexture.lock().get(), 1);
         gBuffer.attachTexture(posTexture.lock().get(), 2);
-        gBuffer.attachTexture(voxelIDTexture.lock().get(), 3);
         
         gBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -300,11 +292,9 @@ int main(void) {
             taaShader.setTexture(frameTexture, 0, "u_frameTexture");
             taaShader.setTexture(normalTexture, 1, "u_normalTexture");
             taaShader.setTexture(posTexture, 2, "u_posTexture");
-            taaShader.setTexture(voxelIDTexture, 3, "u_voxelIDTexture");
             taaShader.setTexture(prevFrameTexture, 4, "u_prevFrameTexture");
             taaShader.setTexture(prevNormalTexture, 5, "u_prevNormalTexture");
             taaShader.setTexture(prevPosTexture, 6, "u_prevPosTexture");
-            taaShader.setTexture(prevVoxelIDTexture, 7, "u_prevVoxelIDTexture");
 
             taaShader.setUniform3f("u_cameraPos", position.x, position.y, position.z);
             taaShader.setUniform3f("u_prevCameraPos", prevPosition.x, prevPosition.y, prevPosition.z);
@@ -312,6 +302,9 @@ int main(void) {
             taaShader.setUniform2f("u_windowSize", (float)windowSize.x, (float)windowSize.y);
             taaShader.setUniform1f("u_fov", 1.0);
             taaShader.setUniform1f("u_taaAlpha", taaAlpha);
+            taaShader.setUniform1f("u_taaDistWeightScaler", taaDistWeightScaler);
+            taaShader.setUniform1f("u_taaNormalWeightScaler", taaNormalWeightScaler);
+            taaShader.setUniform1f("u_taaColorNormalScaler", taaColorWeightScaler);
 
             taaShader.bindTextures();
 
@@ -334,6 +327,9 @@ int main(void) {
         ImGui::RadioButton("Show normal buffer", &outputImageSelection, 2);
 
         ImGui::SliderFloat("TAA alpha", &taaAlpha, 0.0, 1.0, "%f");
+        ImGui::SliderFloat("TAA dist weight scaler", &taaDistWeightScaler, 0.0, 100.0);
+        ImGui::SliderFloat("TAA normal weight scaler", &taaNormalWeightScaler, 0.0, 100.0);
+        ImGui::SliderFloat("TAA color dist scaler", &taaColorWeightScaler, 0.0, 100.0);
 
         if(ImGui::Button("Hide cursor")) {
             cursorHidden = true;
@@ -346,7 +342,6 @@ int main(void) {
         std::swap(frameTexture, prevFrameTexture);
         std::swap(normalTexture, prevNormalTexture);
         std::swap(posTexture, prevPosTexture);
-        std::swap(voxelIDTexture, prevVoxelIDTexture);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
