@@ -6,7 +6,6 @@ void main() {
     gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
 }
 
-
 #section fragment
 #version 430 core
 
@@ -65,13 +64,13 @@ void main() {
                 
                 vec3 deltaFragmentPos = pos - prevFragmentPos;
                 float dist = distance(pos, prevFragmentPos);
-                float distWeight = min(exp(-dist * u_taaDistWeightScaler), 1.0);
+                float distWeight = min(exp(-dist / u_taaDistWeightScaler), 1.0);
 
                 float normalDiff = dot(normal, prevNormal) - 1.0;
-                float normalWeight = min(exp((normalDiff * u_taaNormalWeightScaler)), 1.0);
+                float normalWeight = min(exp((normalDiff / u_taaNormalWeightScaler)), 1.0);
 
                 float colorDiff = distance(framePixel, prevPixel);
-                float colorWeight = min(exp(colorDiff * u_taaColorWeightScaler), 1.0);
+                float colorWeight = min(exp(colorDiff / u_taaColorWeightScaler), 1.0);
 
                 float weight = distWeight * normalWeight * colorWeight;
 

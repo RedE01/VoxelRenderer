@@ -155,6 +155,21 @@ int main(void) {
     blueNoiseTexture->setWrapModeR(TextureWrapMode::REPEAT);
     blueNoiseTexture->setWrapModeS(TextureWrapMode::REPEAT);
 
+    std::shared_ptr<Texture> denoisedFrame0 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    denoisedFrame0->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    denoisedFrame0->setFilterMode(TextureFilterMode::NEAREST);
+    denoisedFrame0->setWrapModeR(TextureWrapMode::REPEAT);
+    denoisedFrame0->setWrapModeS(TextureWrapMode::REPEAT);
+
+    std::shared_ptr<Texture> denoisedFrame1 = std::make_shared<Texture>(TextureType::TEXTURE_2D);
+    denoisedFrame1->textureImage2D(TextureFormat::RGBA16F, windowSize.x, windowSize.y, (float*)NULL);
+    denoisedFrame1->setFilterMode(TextureFilterMode::NEAREST);
+    denoisedFrame1->setWrapModeR(TextureWrapMode::REPEAT);
+    denoisedFrame1->setWrapModeS(TextureWrapMode::REPEAT);
+
+    std::weak_ptr<Texture> denoisedFrameDst = denoisedFrame0;
+    std::weak_ptr<Texture> denoisedFrameSrc = denoisedFrame1;
+
     lightingFrameBuffer.attachTexture(frameTexture.lock().get(), 0);
     lightingFrameBuffer.unbind();
 
@@ -164,6 +179,8 @@ int main(void) {
     if(!lightingShader.compiledSuccessfully()) return -1;
     Shader taaShader("taaShader.glsl");
     if(!taaShader.compiledSuccessfully()) return -1;
+    Shader denoisingShader("denoisingShader.glsl");
+    if(!denoisingShader.compiledSuccessfully()) return -1;
     Shader postProcessShader("postProcessShader.glsl");
     if(!postProcessShader.compiledSuccessfully()) return -1;
 
@@ -204,15 +221,21 @@ int main(void) {
     std::chrono::time_point<std::chrono::high_resolution_clock> previousTime = currentTime;
     double timeAccumulator = 0.0;
     int frameCounter = 0;
-
     double deltaTime = 0.0;
     int frame = 0;
 
     int outputImageSelection = 0;
     float taaAlpha = 0.1;
-    float taaDistWeightScaler = 50.0;
-    float taaNormalWeightScaler = 50.0;
-    float taaColorWeightScaler = 50.0;
+    float taaDistWeightScaler = 0.1;
+    float taaNormalWeightScaler = 0.02;
+    float taaColorWeightScaler = 0.01;
+
+    bool enableDenoising = true;
+    float denoisingColorWeightScaler = 0.01;
+    float denoisingNormalWeightScaler = 0.01;
+    float denoisingPosWeightScaler = 0.5;
+
+    int denoiseIterations = 3;
 
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
@@ -287,6 +310,7 @@ int main(void) {
         lightingFrameBuffer.setDrawBuffers();
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        // TAA
         if(taaAlpha < 1.0) {
             taaShader.useShader();
             taaShader.setTexture(frameTexture, 0, "u_frameTexture");
@@ -311,10 +335,39 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
+        std::weak_ptr<Texture> result = frameTexture;
+
+        if(enableDenoising) {
+            denoisingShader.useShader();
+            denoisingShader.setUniform2f("u_windowSize", (float)windowSize.x, (float)windowSize.y);
+            denoisingShader.setUniform1f("u_colorWeightScaler", denoisingColorWeightScaler);
+            denoisingShader.setUniform1f("u_normalWeightScaler", denoisingNormalWeightScaler);
+            denoisingShader.setUniform1f("u_posWeightScaler", denoisingPosWeightScaler);
+            denoisingShader.setTexture(albedoTexture, 1, "u_albedoTexture");
+            denoisingShader.setTexture(normalTexture, 2, "u_normalTexture");
+            denoisingShader.setTexture(posTexture, 3, "u_posTexture");
+
+            for(int iteration = 0; iteration < denoiseIterations; ++iteration) {
+                std::swap(denoisedFrameSrc, denoisedFrameDst);
+                std::weak_ptr<Texture> srcTexture = (iteration == 0) ? frameTexture : denoisedFrameSrc;
+
+                denoisingShader.setUniform1f("u_scale", (float)(std::pow(2.0, iteration)));
+
+                denoisingShader.setTexture(srcTexture, 0, "u_frameTexture");
+                lightingFrameBuffer.attachTexture(denoisedFrameDst.lock().get(), 0);
+
+                denoisingShader.bindTextures();
+                lightingFrameBuffer.setDrawBuffers();
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            }
+
+            result = denoisedFrameDst;
+        }
+
         // Render final frame
         lightingFrameBuffer.unbind();
         postProcessShader.useShader();
-        postProcessShader.setTexture(frameTexture, 0, "u_frameTexture");
+        postProcessShader.setTexture(result, 0, "u_frameTexture");
         postProcessShader.setTexture(normalTexture, 2, "u_gNormal");
         postProcessShader.bindTextures();
         postProcessShader.setUniform1i("u_frameTexture", outputImageSelection);
@@ -327,9 +380,14 @@ int main(void) {
         ImGui::RadioButton("Show normal buffer", &outputImageSelection, 2);
 
         ImGui::SliderFloat("TAA alpha", &taaAlpha, 0.0, 1.0, "%f");
-        ImGui::SliderFloat("TAA dist weight scaler", &taaDistWeightScaler, 0.0, 100.0);
-        ImGui::SliderFloat("TAA normal weight scaler", &taaNormalWeightScaler, 0.0, 100.0);
-        ImGui::SliderFloat("TAA color dist scaler", &taaColorWeightScaler, 0.0, 100.0);
+        ImGui::SliderFloat("TAA dist weight scaler", &taaDistWeightScaler, 0.0, 1.0);
+        ImGui::SliderFloat("TAA normal weight scaler", &taaNormalWeightScaler, 0.0, 1.0);
+        ImGui::SliderFloat("TAA color weight scaler", &taaColorWeightScaler, 0.0, 1.0);
+        ImGui::SliderFloat("Denoising color weight scaler", &denoisingColorWeightScaler, 0.01, 1.0);
+        ImGui::SliderFloat("Denoising normal weight scaler", &denoisingNormalWeightScaler, 0.01, 1.0);
+        ImGui::SliderFloat("Denoising pos weight scaler", &denoisingPosWeightScaler, 0.01, 1.0);
+        ImGui::Checkbox("Enable denoising", &enableDenoising);
+        ImGui::SliderInt("Denoise iterations", &denoiseIterations, 0, 10);
 
         if(ImGui::Button("Hide cursor")) {
             cursorHidden = true;
